@@ -93,16 +93,14 @@ void loop() {
     double t_laser_traite = tension_a_temp(t_laser_brut);
 
     if (MODE_REP_ECHELON){
-      // Afficher les donnees
-      Serial.print("{\"temps\":");
+      // Afficher les donnees sur le serial monitor (pour export)
       Serial.print(millis());
-      Serial.print(",\"ACTU\":");
+      Serial.print(",");
       Serial.print(t_actu_traite);
-      Serial.print(",\"MILIEU\":");
+      Serial.print(",");
       Serial.print(t_milieu_traite);
-      Serial.print(",\"LASER\":");
-      Serial.print(t_laser_traite);
-      Serial.println("}");
+      Serial.print(",");
+      Serial.println(t_laser_traite);
     }
     else {
       double sortie_pi = PI_output(28.0, t_laser_traite); // 28 pour test
