@@ -41,33 +41,30 @@ void setup() {
   pinMode(ACTU, OUTPUT);
 
 
-  // Pour avoir fréquence de 4kHz et 16 bits sur le pwm
-  TCCR1A |= (1 << COM1A1);  // Sortie PWM sur OC1A (D11)
-  TCCR1A |= (1 << WGM11);   // Mode fast PWM 
-  TCCR1B |= (1 << WGM12) | (1 << WGM13);  // Mode 14 : Fast PWM avec TOP = ICR1
-  // Définir la fréquence du PWM
-  ICR1 = 4000;
-  // Choix du prescaler
-  TCCR1B |= (1 << CS10);  // Prescaler = 1 (fréquence maximale)
-  OCR1A = 2000; // 50% du cycle car fréquence de 4000Hz, donc 0V de output
+  // Pour avoir fréquence de 5kHz et 16 bits sur le pwm
+  TCCR1A = (1 << COM1A1) | (1 << WGM11); // Mode Fast PWM avec TOP = ICR1
+  TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS10); // Mode 14, prescaler = 1
 
+  ICR1 = 8000;  // Définit la période pour obtenir 5 kHz
+  OCR1A = 1000; // entre 0 et 8000
 
   // Configurer Timer2 pour générer une interruption toutes les 1 ms pour lire les températures (F_échantillonnage = 3ms, car boucle sur les 3 pins)
-  TCCR2A = (1 << WGM21);   // Mode CTC
+  TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
   TCCR2B = (1 << CS22);    // Prescaler de 64
-  OCR2A = 249;             // Calcul pour trouver OCR2A en fonction de la fréquence d'échantillonnage (16 MHz / (64 * 1000Hz)) - 1 = 249  
+  OCR2A = 249;             // Calcul pour trouver OCR2A en fonction de la fréquence d'échantillonnage : (16 MHz / (prescaler * f_ech)) - 1 = 249 
+                           // on veut f_ech = 1kHz
   TIMSK2 |= (1 << OCIE2A); // Activer l’interruption du timer
 
   // Configurer l’ADC
-  ADMUX = (1 << REFS0);    // Référence AVCC, entrée ADC0 (A0)
+  ADMUX = (1 << REFS0);    // Référence AVCC, entrée (A0)
   ADCSRA = (1 << ADEN)  |  // Activer l’ADC
-           (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); // Prescaler 128 (125 kHz ADC)
-  // 
+           (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); // Prescaler 128 (16MHz / prescaler = 125kHz ADC)
+  // Complète une conversion en 104us (13 cycle d'horloge / fréquence adc = 104us)
 }
 
 // Routine interruption echantillonnage
 ISR(TIMER2_COMPA_vect) {
-    // Sélectionner le canal ADC (A0, A1, A2)
+   //Sélectionner le canal ADC (A0, A1, A2)
     ADMUX = (ADMUX & 0xF8) | canal_ADC; // Met à jour les bits MUX pour ADC0, ADC1 ou ADC2
 
     ADCSRA |= (1 << ADSC);  // Lancer une conversion ADC
@@ -83,14 +80,14 @@ void loop() {
   if (nouvelle_donnee) {
     // Conversions ADC (10 bits)
     // Si on veut plus precis il va falloir un adc externe
-    double t_actu_brut = valeur_ADC[0] * 3.3 / 1023.0;
-    double t_milieu_brut = valeur_ADC[1] * 3.3 / 1023.0;
-    double t_laser_brut = valeur_ADC[2] * 3.3 / 1023.0;
+    double t_actu_brut = valeur_ADC[0] * 5 / 1023.0;
+    //double t_milieu_brut = valeur_ADC[1] * 3.3 / 1023.0;
+    //double t_laser_brut = valeur_ADC[2] * 3.3 / 1023.0;
 
     // Convertir les tensions en températures
     double t_actu_traite = tension_a_temp(t_actu_brut);
-    double t_milieu_traite = tension_a_temp(t_milieu_brut);
-    double t_laser_traite = tension_a_temp(t_laser_brut);
+    //double t_milieu_traite = tension_a_temp(t_milieu_brut);
+    //double t_laser_traite = tension_a_temp(t_laser_brut);
 
     if (MODE_REP_ECHELON){
       // Afficher les donnees sur le serial monitor (pour export)
@@ -101,11 +98,12 @@ void loop() {
       Serial.print(t_milieu_traite);
       Serial.print(",");
       Serial.println(t_laser_traite);
+      delay(100);
     }
     else {
-      double sortie_pi = PI_output(28.0, t_laser_traite); // 28 pour test
+      double sortie_pi = PI_output(28.0, 2); // 28 pour test
       // ici on va vouloir changer la fréquence du pwm en fonction de sorti_PI :
-      // OCR1A = 2000 // 50% du cycle car fréquence de 4000Hz
+      // OCR1A = 2000 // entre 0 et 8000
     }
 
 
@@ -122,13 +120,13 @@ double PI_output(double cible, double mesure){
   double output = GAIN * erreur + TEMPS_INTEGRALE * integrale;
 
   return output;
-
 }
 
 // Calcule temperature avec thermistance NTC (resistance descend si température monte)
 double tension_a_temp(double tension) {
   // Enlever le gain de l'ampli si nécessaire
-  double rt = tension * r_diviseur / (3.3 - tension) ; // diviseur tension (3.3V à confirmer)
+  double rt = tension * r_diviseur / (5 - tension) ; // diviseur tension
+  //double rt = (r_diviseur*5 - (r_diviseur*2)*tension)*r_diviseur/(r_diviseur*5 - ((r_diviseur*2)*tension)); // Wheatstone
   double log_r = log(rt/r_25deg); // Simplifier calcul
   return 1/(A+B*log_r+C*log_r*log_r+D*log_r*log_r*log_r) - 273.15; // temperature en °C
 }
