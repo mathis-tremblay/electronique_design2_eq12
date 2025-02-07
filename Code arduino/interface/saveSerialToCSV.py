@@ -3,7 +3,7 @@ import csv
 import time
 
 # Configuration du port série (ajuste selon ton système)
-PORT = "COM4"  # Changer selon le port usb de l'Arduino
+PORT = "COM9"  # Changer selon le port usb de l'Arduino
 BAUDRATE = 115200
 OUTPUT_FILE = "data.csv" # Nom du fichier, a changer sinon écrase l'ancier
 

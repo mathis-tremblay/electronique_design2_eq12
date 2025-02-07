@@ -81,13 +81,13 @@ void loop() {
     // Conversions ADC (10 bits)
     // Si on veut plus precis il va falloir un adc externe
     double t_actu_brut = valeur_ADC[0] * 5 / 1023.0;
-    //double t_milieu_brut = valeur_ADC[1] * 3.3 / 1023.0;
-    //double t_laser_brut = valeur_ADC[2] * 3.3 / 1023.0;
+    double t_milieu_brut = valeur_ADC[1] * 5 / 1023.0;
+    double t_laser_brut = valeur_ADC[2] * 5 / 1023.0;
 
     // Convertir les tensions en températures
     double t_actu_traite = tension_a_temp(t_actu_brut);
-    //double t_milieu_traite = tension_a_temp(t_milieu_brut);
-    //double t_laser_traite = tension_a_temp(t_laser_brut);
+    double t_milieu_traite = tension_a_temp(t_milieu_brut);
+    double t_laser_traite = tension_a_temp(t_laser_brut);
 
     if (MODE_REP_ECHELON){
       // Afficher les donnees sur le serial monitor (pour export)
@@ -98,7 +98,7 @@ void loop() {
       Serial.print(t_milieu_traite);
       Serial.print(",");
       Serial.println(t_laser_traite);
-      delay(100);
+      //delay(1000);
     }
     else {
       double sortie_pi = PI_output(28.0, 2); // 28 pour test
@@ -130,3 +130,6 @@ double tension_a_temp(double tension) {
   double log_r = log(rt/r_25deg); // Simplifier calcul
   return 1/(A+B*log_r+C*log_r*log_r+D*log_r*log_r*log_r) - 273.15; // temperature en °C
 }
+
+
+// 1.2 ohm
