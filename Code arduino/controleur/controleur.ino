@@ -19,7 +19,7 @@ const double TS = 0.1; // periode echantillonnage (en sec)... à choisir
 double dt = 0.003; // temps echantillonnage de 3ms
 double integrale = 0;
 
-const bool MODE_REP_ECHELON = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
+bool mode_rep_echelon = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
 
 // Variables lecteurs températures
 volatile uint16_t valeur_ADC[3];
@@ -41,19 +41,27 @@ void setup() {
   pinMode(ACTU, OUTPUT);
 
 
-  // Pour avoir fréquence de 5kHz et 16 bits sur le pwm
+  // Pour avoir fréquence de 4kHz et 16 bits sur le pwm
   TCCR1A = (1 << COM1A1) | (1 << WGM11); // Mode Fast PWM avec TOP = ICR1
   TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS10); // Mode 14, prescaler = 1
 
-  ICR1 = 8000;  // Définit la période pour obtenir 5 kHz
-  OCR1A = 1000; // entre 0 et 8000
+  ICR1 = 4000;  // Définit la période pour obtenir 4 kHz
+  OCR1A = 1200; // entre 0 et 4000
 
   // Configurer Timer2 pour générer une interruption toutes les 1 ms pour lire les températures (F_échantillonnage = 3ms, car boucle sur les 3 pins)
   TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
   TCCR2B = (1 << CS22);    // Prescaler de 64
   OCR2A = 249;             // Calcul pour trouver OCR2A en fonction de la fréquence d'échantillonnage : (16 MHz / (prescaler * f_ech)) - 1 = 249 
-                           // on veut f_ech = 1kHz
+                             // on veut f_ech = 1kHz
   TIMSK2 |= (1 << OCIE2A); // Activer l’interruption du timer
+
+  /* Timer 3 (arduino mega seulement)
+  / Configurer Timer3 pour générer une interruption toutes les  0.1 s pour lire les températures (F_échantillonnage = 30Hz, car boucle sur les 3 pins)
+  TCCR3A = 0;                      // Mode normal
+  TCCR3B = (1 << WGM32) | (1 << CS32) | (1 << CS30);  // CTC mode, prescaler 1024
+  OCR3A = 15624;                   // (16 MHz / (1024 * 10 Hz)) - 1 = 15624
+  TIMSK3 |= (1 << OCIE3A);         // Activer l’interruption du timer
+  */
 
   // Configurer l’ADC
   ADMUX = (1 << REFS0);    // Référence AVCC, entrée (A0)
@@ -76,6 +84,43 @@ ISR(TIMER2_COMPA_vect) {
   }
 
 void loop() {
+
+  // Vérifier si une commande est reçue
+  if (Serial.available() > 0) {
+    String commande = Serial.readStringUntil('\n');
+    commande.trim();
+    if (commande.startsWith("set_mode ")) {
+      int mode = commande.substring(8).toInt();
+      if (mode == 1) {
+        mode_rep_echelon = true;
+        Serial.println("RESP:Mode manuel activé.");
+      }
+      else {
+        mode_rep_echelon = false;
+        Serial.println("RESP:Mode contrôleur activé.");
+      }
+    }
+    else if (commande.startsWith("set_voltage ")) {
+      if (mode_rep_echelon) {
+        int volt = commande.substring(11).toFloat();
+        if (volt > 1. || volt < -1.) {
+          Serial.println("RESP:La tension ne respecte pas les bornes de -1V a 1V");
+        }
+        else {
+          OCR1A = (volt + 1.) * 2000;
+        Serial.print("RESP:Volts en entré: ");
+        Serial.println(volt);
+        } 
+      }
+      else {
+        Serial.println("RESP:Tu ne peux pas commander une tension en mode automatique");
+      }
+    }
+    else {
+        Serial.println("RESP:Commande inconnue.");
+    }
+  }
+
   // attendre qu'on recupere une nouvelle donnee
   if (nouvelle_donnee) {
     // Conversions ADC (10 bits)
@@ -89,8 +134,11 @@ void loop() {
     double t_milieu_traite = tension_a_temp(t_milieu_brut);
     double t_laser_traite = tension_a_temp(t_laser_brut);
 
-    if (MODE_REP_ECHELON){
+
+
+    if (mode_rep_echelon){
       // Afficher les donnees sur le serial monitor (pour export)
+      Serial.print("DATA:");
       Serial.print(millis());
       Serial.print(",");
       Serial.print(t_actu_traite);
