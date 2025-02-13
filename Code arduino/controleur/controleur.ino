@@ -151,7 +151,7 @@ void loop() {
     else {
       double sortie_pi = PI_output(28.0, 2); // 28 pour test
       // ici on va vouloir changer la fréquence du pwm en fonction de sorti_PI :
-      // OCR1A = 2000 // entre 0 et 8000
+      // OCR1A = 2000 // entre 0 et 4000
     }
 
 
