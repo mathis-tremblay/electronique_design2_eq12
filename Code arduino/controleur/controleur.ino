@@ -48,15 +48,14 @@ void setup() {
   ICR1 = 4000;  // Définit la période pour obtenir 4 kHz
   OCR1A = 1200; // entre 0 et 4000
 
-  // Configurer Timer2 pour générer une interruption toutes les 1 ms pour lire les températures (F_échantillonnage = 3ms, car boucle sur les 3 pins)
+  // Configurer Timer2 pour générer une interruption toutes les x ms pour lire les températures (F_échantillonnage = 3x ms, car boucle sur les 3 pins)
   TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
   TCCR2B = (1 << CS22);    // Prescaler de 64
-  OCR2A = 249;             // Calcul pour trouver OCR2A en fonction de la fréquence d'échantillonnage : (16 MHz / (prescaler * f_ech)) - 1 = 249 
-                             // on veut f_ech = 1kHz
+  OCR2A = 249;             // Calcul pour trouver OCR2A en fonction de la fréquence d'échantillonnage : (16 MHz / (prescaler *  62.5Hz)) - 1 = 249 
   TIMSK2 |= (1 << OCIE2A); // Activer l’interruption du timer
 
   /* Timer 3 (arduino mega seulement)
-  / Configurer Timer3 pour générer une interruption toutes les  0.1 s pour lire les températures (F_échantillonnage = 30Hz, car boucle sur les 3 pins)
+  // Configurer Timer3 pour générer une interruption toutes les  0.1 s pour lire les températures (F_échantillonnage = 30Hz, car boucle sur les 3 pins)
   TCCR3A = 0;                      // Mode normal
   TCCR3B = (1 << WGM32) | (1 << CS32) | (1 << CS30);  // CTC mode, prescaler 1024
   OCR3A = 15624;                   // (16 MHz / (1024 * 10 Hz)) - 1 = 15624
@@ -146,7 +145,7 @@ void loop() {
       Serial.print(t_milieu_traite);
       Serial.print(",");
       Serial.println(t_laser_traite);
-      //delay(1000);
+      delay(1000);
     }
     else {
       double sortie_pi = PI_output(28.0, 2); // 28 pour test

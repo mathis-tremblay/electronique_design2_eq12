@@ -37,6 +37,9 @@ try:
         writer = csv.writer(f)
         time.sleep(1)
         print(envoyer_commande("set_voltage -1", ser))
+        print(envoyer_commande("set_voltage -1", ser))
+        print(envoyer_commande("set_voltage -1", ser))
+        print(envoyer_commande("set_voltage -1", ser))
         while True:
             lire_donnees(ser, writer)
 except KeyboardInterrupt:
