@@ -1,0 +1,7 @@
+Removed Pin From Net: NetName=+2.5 Pin=U2-1
+Removed Pin From Net: NetName=+2.5 Pin=U2-2
+Removed Pin From Net: NetName=NetR7_1 Pin=U2-3
+Added Pin To Net: NetName=NetR7_1 Pin=U2-5
+Added Pin To Net: NetName=+2.5 Pin=U2-6
+Added Pin To Net: NetName=+2.5 Pin=U2-7
+Added Member To Class: ClassName=PCB_D2_H25_EQ12  Member=Component C5 Cap 0.1uF 100mil

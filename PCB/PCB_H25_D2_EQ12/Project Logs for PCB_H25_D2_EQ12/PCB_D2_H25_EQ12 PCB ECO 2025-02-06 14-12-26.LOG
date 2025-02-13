@@ -1,0 +1,8 @@
+Removed Member From Class: ClassName=PCB_D2_H25_EQ12  Member=R1
+Added Pin To Net: NetName=NetR3_2 Pin=R3-2
+Added Pin To Net: NetName=NetR3_2 Pin=U1-2
+Added Net: Name=NetR3_2
+Added Pin To Net: NetName=NetR4_1 Pin=R4-1
+Added Pin To Net: NetName=NetR4_1 Pin=U1-1
+Added Net: Name=NetR4_1
+Added Member To Class: ClassName=PCB_D2_H25_EQ12  Member=Component U1 TLV2372
