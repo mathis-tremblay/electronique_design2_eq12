@@ -6,7 +6,7 @@ from utils import lire_donnees, envoyer_commande
 
 ''' Code principal '''
 
-PORT = "COM4"  # Changer selon le port usb de l'Arduino
+PORT = "COM9"  # Changer selon le port usb de l'Arduino
 BAUDRATE = 115200
 
 # Nom fichier csv pas utilisé
@@ -35,11 +35,7 @@ except serial.SerialException:
 try:
     with open(OUTPUT_FILE, "a", newline='') as f:
         writer = csv.writer(f)
-        time.sleep(1)
-        print(envoyer_commande("set_voltage -1", ser))
-        print(envoyer_commande("set_voltage -1", ser))
-        print(envoyer_commande("set_voltage -1", ser))
-        print(envoyer_commande("set_voltage -1", ser))
+        #time.sleep(1)
         while True:
             lire_donnees(ser, writer)
 except KeyboardInterrupt:

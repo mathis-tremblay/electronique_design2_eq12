@@ -11,6 +11,7 @@ const double C = 0.00000260597012072052;
 const double D = 0.000000063292612648746;
 const int r_25deg = 10000;
 const int r_diviseur = 10000;
+const double freq = 20.0; // Freq échantillonnage = freq/3
 
 // Constantes et variables pour PI
 const double GAIN = 0.8;
@@ -46,21 +47,21 @@ void setup() {
   TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS10); // Mode 14, prescaler = 1
 
   ICR1 = 4000;  // Définit la période pour obtenir 4 kHz
-  OCR1A = 1200; // entre 0 et 4000
+  OCR1A = 2500; // entre 0 et 4000 (max 3700 sinon short... 0-3700 avec milieux environ a 1850)
 
   // Configurer Timer2 pour générer une interruption toutes les x ms pour lire les températures (F_échantillonnage = 3x ms, car boucle sur les 3 pins)
-  TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
+  /*TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
   TCCR2B = (1 << CS22);    // Prescaler de 64
   OCR2A = 249;             // Calcul pour trouver OCR2A en fonction de la fréquence d'échantillonnage : (16 MHz / (prescaler *  62.5Hz)) - 1 = 249 
   TIMSK2 |= (1 << OCIE2A); // Activer l’interruption du timer
-
-  /* Timer 3 (arduino mega seulement)
-  // Configurer Timer3 pour générer une interruption toutes les  0.1 s pour lire les températures (F_échantillonnage = 30Hz, car boucle sur les 3 pins)
+*/
+  // Timer 3 (arduino mega seulement)
+  // Configurer Timer3 pour générer interruption
   TCCR3A = 0;                      // Mode normal
   TCCR3B = (1 << WGM32) | (1 << CS32) | (1 << CS30);  // CTC mode, prescaler 1024
-  OCR3A = 15624;                   // (16 MHz / (1024 * 10 Hz)) - 1 = 15624
+  OCR3A = 16000000 / (1024 * freq) - 1;                 
   TIMSK3 |= (1 << OCIE3A);         // Activer l’interruption du timer
-  */
+  
 
   // Configurer l’ADC
   ADMUX = (1 << REFS0);    // Référence AVCC, entrée (A0)
@@ -70,7 +71,7 @@ void setup() {
 }
 
 // Routine interruption echantillonnage
-ISR(TIMER2_COMPA_vect) {
+ISR(TIMER3_COMPA_vect) {
    //Sélectionner le canal ADC (A0, A1, A2)
     ADMUX = (ADMUX & 0xF8) | canal_ADC; // Met à jour les bits MUX pour ADC0, ADC1 ou ADC2
 
@@ -129,29 +130,29 @@ void loop() {
     double t_laser_brut = valeur_ADC[2] * 5 / 1023.0;
 
     // Convertir les tensions en températures
-    double t_actu_traite = tension_a_temp(t_actu_brut);
-    double t_milieu_traite = tension_a_temp(t_milieu_brut);
-    double t_laser_traite = tension_a_temp(t_laser_brut);
+    double t_actu_traite = tension_a_temp(valeur_ADC[0]);
+    double t_milieu_traite = tension_a_temp(valeur_ADC[1]);
+    double t_laser_traite = tension_a_temp(valeur_ADC[2]);
 
 
 
     if (mode_rep_echelon){
       // Afficher les donnees sur le serial monitor (pour export)
       Serial.print("DATA:");
-      Serial.print(millis());
+      Serial.print(millis()/1000.0);
       Serial.print(",");
       Serial.print(t_actu_traite);
       Serial.print(",");
       Serial.print(t_milieu_traite);
       Serial.print(",");
       Serial.println(t_laser_traite);
-      delay(1000);
     }
     else {
       double sortie_pi = PI_output(28.0, 2); // 28 pour test
       // ici on va vouloir changer la fréquence du pwm en fonction de sorti_PI :
       // OCR1A = 2000 // entre 0 et 4000
     }
+    nouvelle_donnee = false;
 
 
   }
@@ -170,10 +171,10 @@ double PI_output(double cible, double mesure){
 }
 
 // Calcule temperature avec thermistance NTC (resistance descend si température monte)
-double tension_a_temp(double tension) {
-  // Enlever le gain de l'ampli si nécessaire
+double tension_a_temp(int donne_brute) {
+  // Transfert en tension et enlever gain et soustraction ampli
+  double tension = donne_brute * 5 / 1023.0 * 24000/100000 + 1.912;
   double rt = tension * r_diviseur / (5 - tension) ; // diviseur tension
-  //double rt = (r_diviseur*5 - (r_diviseur*2)*tension)*r_diviseur/(r_diviseur*5 - ((r_diviseur*2)*tension)); // Wheatstone
   double log_r = log(rt/r_25deg); // Simplifier calcul
   return 1/(A+B*log_r+C*log_r*log_r+D*log_r*log_r*log_r) - 273.15; // temperature en °C
 }

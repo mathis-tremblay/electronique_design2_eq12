@@ -11,7 +11,7 @@ class ArduinoInterface:
         self.root = root
         self.root.title("Arduino Interface")
 
-        self.port = "COM4"
+        self.port = "COM9"
         self.baudrate = 115200
         self.ser = None
 
