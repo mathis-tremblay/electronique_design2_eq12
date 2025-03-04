@@ -14,13 +14,23 @@ const int r_diviseur = 10000;
 const double freq = 20.0; // Freq échantillonnage = freq/3
 
 // Constantes et variables pour PI
-const double GAIN = 0.8;
-const double TEMPS_INTEGRALE = 0.1;
-const double TS = 0.1; // periode echantillonnage (en sec)... à choisir 
-double dt = 0.003; // temps echantillonnage de 3ms
-double integrale = 0;
+const double Kp = 35.28;
+const double Ki = -34.91;
+const double Kd = -1.0;
 
-bool mode_rep_echelon = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
+// Memoire donnees pour integrale
+const int N = 10;
+double u[N] = {0}; // files entrees
+double y[N] = {0}; // files sortie
+int index = 0;
+
+// Saturation
+const int umin = 0;
+const int umax = 3700;
+
+bool mode_rep_echelon = false;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
+
+double temp_cible = 25.0;
 
 // Variables lecteurs températures
 volatile uint16_t valeur_ADC[3];
@@ -28,7 +38,7 @@ volatile uint8_t canal_ADC = 0;   // numero pin en cours de lecture
 volatile bool nouvelle_donnee = false;
 
 // Déclarations fonctions
-double PI_output(double cible, double mesure);
+double PID_output(double cible, double mesure);
 double tension_a_temp(double tension);
 
 
@@ -70,8 +80,8 @@ void setup() {
   // Complète une conversion en 104us (13 cycle d'horloge / fréquence adc = 104us)
 }
 
-// Routine interruption echantillonnage
-ISR(TIMER3_COMPA_vect) {
+// Routine interruption echantillonnage TIMER2 SI arduino uno
+ISR(TIMER2_COMPA_vect) {
    //Sélectionner le canal ADC (A0, A1, A2)
     ADMUX = (ADMUX & 0xF8) | canal_ADC; // Met à jour les bits MUX pour ADC0, ADC1 ou ADC2
 
@@ -104,16 +114,30 @@ void loop() {
       if (mode_rep_echelon) {
         int volt = commande.substring(11).toFloat();
         if (volt > 1. || volt < -1.) {
-          Serial.println("RESP:La tension ne respecte pas les bornes de -1V a 1V");
+          Serial.println("RESP:La tension ne respecte pas les bornes de -1V a 1V.");
         }
         else {
-          OCR1A = (volt + 1.) * 2000;
-        Serial.print("RESP:Volts en entré: ");
-        Serial.println(volt);
+          OCR1A = (volt + 1.) * umax/2;
+          Serial.print("RESP:Volts en entré: ");
+          Serial.println(volt);
         } 
       }
       else {
-        Serial.println("RESP:Tu ne peux pas commander une tension en mode automatique");
+        Serial.println("RESP:Tu ne peux pas commander une tension en mode automatique.");
+      }
+    }
+    else if (commande.startsWith("set_temp ")){
+      if (!mode_rep_echelon) {
+        double temp = commande.substring(11).toFloat();
+        if (temp > 30. || temp < 20.) {
+          Serial.println("RESP:La température n'est pas entre 20°C et 30°C.");
+        }
+        else {
+          temp_cible = temp;
+        } 
+      }
+      else {
+        Serial.println("RESP:Tu ne peux pas commander une température en mode manuel.");
       }
     }
     else {
@@ -147,10 +171,11 @@ void loop() {
       Serial.print(",");
       Serial.println(t_laser_traite);
     }
-    else {
-      double sortie_pi = PI_output(28.0, 2); // 28 pour test
+    else { // Mode controleur
+      double sortie_pid = PID_output(temp_cible, 20.); 
       // ici on va vouloir changer la fréquence du pwm en fonction de sorti_PI :
-      // OCR1A = 2000 // entre 0 et 4000
+      OCR1A = sortie_pid;
+      delay(1000);
     }
     nouvelle_donnee = false;
 
@@ -159,19 +184,38 @@ void loop() {
   
 }
 
-// Calcule la sortie du PI
-double PI_output(double cible, double mesure){
-  // TODO: technique integrale plus precise
-  // TODO: anti wind-up et protection contre saturation
+// Calcule la sortie du PID
+double PID_output(double cible, double mesure) {
   double erreur = cible - mesure;
-  integrale += erreur * dt;
-  double output = GAIN * erreur + TEMPS_INTEGRALE * integrale;
 
-  return output;
+  // Mise à jour de l'erreur integrale
+  static double erreur_integrale = 0;
+  erreur_integrale += erreur; // Accumulation pour le terme intégral
+
+  // Calcul PID
+  double derivee = erreur - u[index];
+  index = (index + 1) % N; // maj index
+  u[index] = erreur; 
+
+  double output = Kp * erreur + Ki * erreur_integrale + Kd * derivee;
+  Serial.println(output);
+  output = map(output, -10000, 10000, 0., 3750.); // output avant saturation... TODO: Changer borne depart
+  // Appliquer saturation et anti-windup
+  if (output > umax) {
+    output = umax;
+    erreur_integrale -= erreur; // Anti-windup
+  } 
+  else if (output < umin) {
+    output = umin;
+    erreur_integrale -= erreur; // Anti-windup
+  }
+
+  return constrain(output, 0., 3750.);
 }
 
+
 // Calcule temperature avec thermistance NTC (resistance descend si température monte)
-double tension_a_temp(int donne_brute) {
+double tension_a_temp(double donne_brute) {
   // Transfert en tension et enlever gain et soustraction ampli
   double tension = donne_brute * 5 / 1023.0 * 24000/100000 + 1.912;
   double rt = tension * r_diviseur / (5 - tension) ; // diviseur tension
@@ -179,5 +223,3 @@ double tension_a_temp(int donne_brute) {
   return 1/(A+B*log_r+C*log_r*log_r+D*log_r*log_r*log_r) - 273.15; // temperature en °C
 }
 
-
-// 1.2 ohm
