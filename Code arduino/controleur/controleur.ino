@@ -11,12 +11,12 @@ const double C = 0.00000260597012072052;
 const double D = 0.000000063292612648746;
 const int r_25deg = 10000;
 const int r_diviseur = 10000;
-const double freq = 20.0; // Freq échantillonnage = freq/3
+const double freq = 6; // Freq échantillonnage = freq/3
 
 // Constantes et variables pour PI
-const double Kp = 35.28;
-const double Ki = -34.91;
-const double Kd = -1.0;
+const double Kp = 0.00062;
+const double Ki = 0.11735;
+const double Kd = 0;
 
 // Memoire donnees pour integrale
 const int N = 10;
@@ -59,13 +59,13 @@ void setup() {
   ICR1 = 4000;  // Définit la période pour obtenir 4 kHz
   OCR1A = 2500; // entre 0 et 4000 (max 3700 sinon short... 0-3700 avec milieux environ a 1850)
 
-  // Configurer Timer2 pour générer une interruption toutes les x ms pour lire les températures (F_échantillonnage = 3x ms, car boucle sur les 3 pins)
+  // Timer2 pour test sur arduino uno
   /*TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
   TCCR2B = (1 << CS22);    // Prescaler de 64
   OCR2A = 249;             // Calcul pour trouver OCR2A en fonction de la fréquence d'échantillonnage : (16 MHz / (prescaler *  62.5Hz)) - 1 = 249 
   TIMSK2 |= (1 << OCIE2A); // Activer l’interruption du timer
 */
-  // Timer 3 (arduino mega seulement)
+  // Timer 3: code officiel pour arduino mega
   // Configurer Timer3 pour générer interruption
   TCCR3A = 0;                      // Mode normal
   TCCR3B = (1 << WGM32) | (1 << CS32) | (1 << CS30);  // CTC mode, prescaler 1024
@@ -172,10 +172,10 @@ void loop() {
       Serial.println(t_laser_traite);
     }
     else { // Mode controleur
-      double sortie_pid = PID_output(temp_cible, 20.); 
+      double sortie_pid = PID_output(temp_cible, t_laser_traite); 
       // ici on va vouloir changer la fréquence du pwm en fonction de sorti_PI :
       OCR1A = sortie_pid;
-      delay(1000);
+      delay(500);
     }
     nouvelle_donnee = false;
 
@@ -199,7 +199,9 @@ double PID_output(double cible, double mesure) {
 
   double output = Kp * erreur + Ki * erreur_integrale + Kd * derivee;
   Serial.println(output);
-  output = map(output, -10000, 10000, 0., 3750.); // output avant saturation... TODO: Changer borne depart
+  output = map(output, -104., 104., umin, umax); // output avant saturation... TODO: Changer borne depart
+  
+  Serial.println(output);
   // Appliquer saturation et anti-windup
   if (output > umax) {
     output = umax;
