@@ -18,6 +18,7 @@ class ArduinoInterface:
         self.t_actu = tk.StringVar()
         self.t_milieu = tk.StringVar()
         self.t_laser = tk.StringVar()
+        self.t_ocr1a = tk.StringVar()
 
         self.create_widgets()
         self.setup_serial()
@@ -62,14 +63,24 @@ class ArduinoInterface:
         self.voltage_entry = tk.Entry(self.root, width=10)
         self.voltage_entry.grid(row=6, column=1, padx=10, pady=10)
 
-        self.set_voltage_button = tk.Button(self.root, text="Set Voltage", command=self.set_voltage)
+        self.set_voltage_button = tk.Button(self.root, text="Fixer la tension", command=self.set_voltage)
         self.set_voltage_button.grid(row=6, column=2, padx=10, pady=10)
+
+        self.temp_label = tk.Label(self.root, text="Température:")
+        self.temp_label.grid(row=7, column=0, padx=10, pady=10)
+        self.temp_entry = tk.Entry(self.root, width=10)
+        self.temp_entry.grid(row=7, column=1, padx=10, pady=10)
+
+        self.set_temp_button = tk.Button(self.root, text="Fixer la température", command=self.set_temperature)
+        self.set_temp_button.grid(row=7, column=2, padx=10, pady=10)
 
     def setup_serial(self):
         try:
             self.ser = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=1)
             time.sleep(1)
             self.output_text.insert(tk.END, f"Port série {self.port} ouvert.\n")
+            command = f"get_mode"
+            #self.mode_var.set(envoyer_commande(command, self.ser))
         except serial.SerialException:
             self.output_text.insert(tk.END, "Erreur d'ouverture du port série.\n")
 
@@ -94,17 +105,24 @@ class ArduinoInterface:
             response = envoyer_commande(command, self.ser)
             self.output_text.insert(tk.END, f"Envoyé: {command}\nRéponse: {response}\n")
 
+    def set_temperature(self):
+        temperature = self.temp_entry.get()
+        if temperature and self.ser:
+            command = f"set_temp {temperature}"
+            response = envoyer_commande(command, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé: {command}\nRéponse: {response}\n")
 
     def read_data(self):
         if self.ser:
             try:
                 ligne = self.ser.readline().decode('utf-8', errors='ignore').strip()
                 if ligne.startswith("DATA:"):
-                    _, t_actu, t_milieu, t_laser = map(float, ligne[5:].split(","))
+                    _, t_actu, t_milieu, t_laser, t_ocr1a = map(float, ligne[5:].split(","))
                     self.output_text.insert(tk.END, f"Données: {ligne[5:]}\n")
                     self.t_actu.set(str(t_actu))
                     self.t_milieu.set(str(t_milieu))
                     self.t_laser.set(str(t_laser))
+                    self.t_ocr1a.set(str(t_ocr1a))
             except Exception as e:
                 self.output_text.insert(tk.END, f"Erreur de lecture: {e}\n")
         self.root.after(1000, self.read_data)

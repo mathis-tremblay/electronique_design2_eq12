@@ -17,10 +17,10 @@ def lire_donnees(ser, writer):
             valeurs = ligne[5:].split(",")
 
             # Vérifier que le format est correct et écrire dans le fichier CSV
-            if len(valeurs) == 4:
+            if len(valeurs) == 4 or len(valeurs) == 5 or len(valeurs) == 8:
                 writer.writerow(valeurs)
                 print("Donnée enregistrée :", valeurs)
-            else:
+            else :
                 print("Format invalide :", ligne)
 
         except Exception as e:

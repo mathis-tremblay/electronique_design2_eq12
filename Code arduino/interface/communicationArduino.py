@@ -19,7 +19,7 @@ OUTPUT_FILE = OUTPUT_FILE + str(i) + ".csv"
 # Création du fichier CSV et écriture de l'en-tête
 with open(OUTPUT_FILE, "w", newline='') as f:
     writer = csv.writer(f)
-    writer.writerow(["temps", "ACTU", "MILIEU", "LASER"])  # En-tête du fichier CSV
+    writer.writerow(["temps", "ACTU", "MILIEU", "LASER", "TENSION_ACTU", "TENSION_MILIEU", "TENSION_LASER", "DUTY CYCLE"])  # En-tête du fichier CSV
 
 print(f"Fichier {OUTPUT_FILE} créé avec en-tête.")
 
@@ -35,7 +35,6 @@ except serial.SerialException:
 try:
     with open(OUTPUT_FILE, "a", newline='') as f:
         writer = csv.writer(f)
-        #time.sleep(1)
         while True:
             lire_donnees(ser, writer)
 except KeyboardInterrupt:

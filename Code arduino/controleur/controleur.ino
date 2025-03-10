@@ -11,7 +11,7 @@ const double C = 0.00000260597012072052;
 const double D = 0.000000063292612648746;
 const int r_25deg = 10000;
 const int r_diviseur = 10000;
-const double freq = 6; // Freq échantillonnage = freq/3
+const double freq = 1.5; // Freq échantillonnage = freq/3
 
 // Constantes et variables pour PI
 const double Kp = 0.00062;
@@ -23,14 +23,16 @@ const int N = 10;
 double u[N] = {0}; // files entrees
 double y[N] = {0}; // files sortie
 int index = 0;
+double erreur_integrale = 0;
+
 
 // Saturation
-const int umin = 0;
-const int umax = 3700;
+const int umin = 350;
+const int umax = 3500;
 
-bool mode_rep_echelon = false;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
+bool mode_rep_echelon = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
 
-double temp_cible = 25.0;
+double temp_cible = 27.0;
 
 // Variables lecteurs températures
 volatile uint16_t valeur_ADC[3];
@@ -57,7 +59,7 @@ void setup() {
   TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS10); // Mode 14, prescaler = 1
 
   ICR1 = 4000;  // Définit la période pour obtenir 4 kHz
-  OCR1A = 2500; // entre 0 et 4000 (max 3700 sinon short... 0-3700 avec milieux environ a 1850)
+  OCR1A = 2200; // entre 0 et 4000 (max 3700 sinon short... 0-3700 avec milieux environ a 1850)
 
   // Timer2 pour test sur arduino uno
   /*TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
@@ -81,7 +83,7 @@ void setup() {
 }
 
 // Routine interruption echantillonnage TIMER2 SI arduino uno
-ISR(TIMER2_COMPA_vect) {
+ISR(TIMER3_COMPA_vect) {
    //Sélectionner le canal ADC (A0, A1, A2)
     ADMUX = (ADMUX & 0xF8) | canal_ADC; // Met à jour les bits MUX pour ADC0, ADC1 ou ADC2
 
@@ -110,6 +112,15 @@ void loop() {
         Serial.println("RESP:Mode contrôleur activé.");
       }
     }
+
+    else if (commande.startsWith("get_mode ")){
+      if (mode_rep_echelon){
+        Serial.println("RESP:1");
+      } else {
+        Serial.println("RESP:2");
+      }
+    }
+
     else if (commande.startsWith("set_voltage ")) {
       if (mode_rep_echelon) {
         int volt = commande.substring(11).toFloat();
@@ -126,20 +137,25 @@ void loop() {
         Serial.println("RESP:Tu ne peux pas commander une tension en mode automatique.");
       }
     }
+
     else if (commande.startsWith("set_temp ")){
-      if (!mode_rep_echelon) {
-        double temp = commande.substring(11).toFloat();
-        if (temp > 30. || temp < 20.) {
-          Serial.println("RESP:La température n'est pas entre 20°C et 30°C.");
-        }
-        else {
-          temp_cible = temp;
-        } 
+      double temp = commande.substring(8).toFloat();
+      if (temp > 30. || temp < 20.) {
+        Serial.println("RESP:La température n'est pas entre 20°C et 30°C.");
       }
       else {
-        Serial.println("RESP:Tu ne peux pas commander une température en mode manuel.");
+        temp_cible = temp;
+        Serial.print("RESP:Température en entré: ");
+        Serial.print(temp);
+        if (mode_rep_echelon){
+          Serial.println(". Cependant, il y n'aura pas d'effet, car vous êtes en mode manuel.");
+        }
+        else{
+          Serial.println();
+        }
       }
     }
+    
     else {
         Serial.println("RESP:Commande inconnue.");
     }
@@ -148,7 +164,7 @@ void loop() {
   // attendre qu'on recupere une nouvelle donnee
   if (nouvelle_donnee) {
     // Conversions ADC (10 bits)
-    // Si on veut plus precis il va falloir un adc externe
+    // Tensions (pour récolte données)
     double t_actu_brut = valeur_ADC[0] * 5 / 1023.0;
     double t_milieu_brut = valeur_ADC[1] * 5 / 1023.0;
     double t_laser_brut = valeur_ADC[2] * 5 / 1023.0;
@@ -159,24 +175,31 @@ void loop() {
     double t_laser_traite = tension_a_temp(valeur_ADC[2]);
 
 
+    // Afficher les donnees sur le serial monitor (pour export)
+    Serial.print("DATA:");
+    Serial.print(millis()/1000.0);
+    Serial.print(",");
+    Serial.print(t_actu_traite);
+    Serial.print(",");
+    Serial.print(t_milieu_traite);
+    Serial.print(",");
+    Serial.print(t_laser_traite);
+    Serial.print(",");
+    Serial.print(t_actu_brut);
+    Serial.print(",");
+    Serial.print(t_milieu_brut);
+    Serial.print(",");
+    Serial.print(t_milieu_brut);
 
     if (mode_rep_echelon){
-      // Afficher les donnees sur le serial monitor (pour export)
-      Serial.print("DATA:");
-      Serial.print(millis()/1000.0);
-      Serial.print(",");
-      Serial.print(t_actu_traite);
-      Serial.print(",");
-      Serial.print(t_milieu_traite);
-      Serial.print(",");
-      Serial.println(t_laser_traite);
     }
     else { // Mode controleur
       double sortie_pid = PID_output(temp_cible, t_laser_traite); 
       // ici on va vouloir changer la fréquence du pwm en fonction de sorti_PI :
       OCR1A = sortie_pid;
-      delay(500);
     }
+    Serial.print(",");
+    Serial.println(OCR1A);
     nouvelle_donnee = false;
 
 
@@ -189,7 +212,6 @@ double PID_output(double cible, double mesure) {
   double erreur = cible - mesure;
 
   // Mise à jour de l'erreur integrale
-  static double erreur_integrale = 0;
   erreur_integrale += erreur; // Accumulation pour le terme intégral
 
   // Calcul PID
@@ -198,10 +220,8 @@ double PID_output(double cible, double mesure) {
   u[index] = erreur; 
 
   double output = Kp * erreur + Ki * erreur_integrale + Kd * derivee;
-  Serial.println(output);
   output = map(output, -104., 104., umin, umax); // output avant saturation... TODO: Changer borne depart
   
-  Serial.println(output);
   // Appliquer saturation et anti-windup
   if (output > umax) {
     output = umax;
@@ -219,7 +239,8 @@ double PID_output(double cible, double mesure) {
 // Calcule temperature avec thermistance NTC (resistance descend si température monte)
 double tension_a_temp(double donne_brute) {
   // Transfert en tension et enlever gain et soustraction ampli
-  double tension = donne_brute * 5 / 1023.0 * 24000/100000 + 1.912;
+  //double tension = donne_brute * 5 / 1023.0 * 24000/100000 + 1.912; // Avec soustracteur
+  double tension = donne_brute * 5 / 1023.0; // Avec juste un diviseur de tension
   double rt = tension * r_diviseur / (5 - tension) ; // diviseur tension
   double log_r = log(rt/r_25deg); // Simplifier calcul
   return 1/(A+B*log_r+C*log_r*log_r+D*log_r*log_r*log_r) - 273.15; // temperature en °C
