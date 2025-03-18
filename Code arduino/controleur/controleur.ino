@@ -59,7 +59,7 @@ void setup() {
   TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS10); // Mode 14, prescaler = 1
 
   ICR1 = 4000;  // Définit la période pour obtenir 4 kHz
-  OCR1A = 2200; // entre 0 et 4000 (max 3700 sinon short... 0-3700 avec milieux environ a 1850)
+  OCR1A = 1600; // entre 0 et 4000 (max 3700 sinon short... 0-3700 avec milieux environ a 1850)
 
   // Timer2 pour test sur arduino uno
   /*TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
@@ -123,8 +123,19 @@ void loop() {
 
     else if (commande.startsWith("set_voltage ")) {
       if (mode_rep_echelon) {
-        int volt = commande.substring(11).toFloat();
-        if (volt > 1. || volt < -1.) {
+        String valeur_str = commande.substring(11);
+        valeur_str.trim();
+        bool estNombre = true;
+
+        // Vérifier si la valeur est bien un nombre
+        for (unsigned int i = 0; i < valeur_str.length(); i++) {
+            if (!isDigit(valeur_str[i]) && valeur_str[i] != '.' && valeur_str[i] != '-' && valeur_str[i] != '+' && valeur_str[i] != ' ') {
+                estNombre = false;
+                break;
+            }
+        }
+        float volt = valeur_str.toFloat();
+        if (volt > 1. || volt < -1. || !estNombre) {
           Serial.println("RESP:La tension ne respecte pas les bornes de -1V a 1V.");
         }
         else {
@@ -165,9 +176,9 @@ void loop() {
   if (nouvelle_donnee) {
     // Conversions ADC (10 bits)
     // Tensions (pour récolte données)
-    double t_actu_brut = valeur_ADC[0] * 5 / 1023.0;
-    double t_milieu_brut = valeur_ADC[1] * 5 / 1023.0;
-    double t_laser_brut = valeur_ADC[2] * 5 / 1023.0;
+    double t_actu_brut = valeur_ADC[0] * 5 / 1023.0 * 24000/100000 + 1.7929;
+    double t_milieu_brut = valeur_ADC[1] * 5 / 1023.0 * 24000/100000 + 1.7929;
+    double t_laser_brut = valeur_ADC[2] * 5 / 1023.0 * 24000/100000 + 1.7929;
 
     // Convertir les tensions en températures
     double t_actu_traite = tension_a_temp(valeur_ADC[0]);
@@ -239,8 +250,8 @@ double PID_output(double cible, double mesure) {
 // Calcule temperature avec thermistance NTC (resistance descend si température monte)
 double tension_a_temp(double donne_brute) {
   // Transfert en tension et enlever gain et soustraction ampli
-  //double tension = donne_brute * 5 / 1023.0 * 24000/100000 + 1.912; // Avec soustracteur
-  double tension = donne_brute * 5 / 1023.0; // Avec juste un diviseur de tension
+  double tension = donne_brute * 5 / 1023.0 * 24000/100000 + 1.7929; // Avec soustracteur
+  //double tension = donne_brute * 5 / 1023.0; // Avec juste un diviseur de tension
   double rt = tension * r_diviseur / (5 - tension) ; // diviseur tension
   double log_r = log(rt/r_25deg); // Simplifier calcul
   return 1/(A+B*log_r+C*log_r*log_r+D*log_r*log_r*log_r) - 273.15; // temperature en °C

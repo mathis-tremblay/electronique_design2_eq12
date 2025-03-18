@@ -1,15 +1,15 @@
-import os
 import serial
-import csv
 import time
 import tkinter as tk
 from tkinter import scrolledtext
-from utils import lire_donnees, envoyer_commande
+from utils import lire_donnees, envoyer_commande, creer_fichier
+
 
 class ArduinoInterface:
     def __init__(self, root):
         self.root = root
         self.root.title("Arduino Interface")
+        self.root.minsize(470, 680)
 
         self.port = "COM9"
         self.baudrate = 115200
@@ -18,10 +18,15 @@ class ArduinoInterface:
         self.t_actu = tk.StringVar()
         self.t_milieu = tk.StringVar()
         self.t_laser = tk.StringVar()
+        self.v_actu = tk.StringVar()
+        self.v_milieu = tk.StringVar()
+        self.v_laser = tk.StringVar()
         self.t_ocr1a = tk.StringVar()
 
         self.create_widgets()
         self.setup_serial()
+
+        self.fichier, self.writer = creer_fichier()
 
     def create_widgets(self):
         self.command_label = tk.Label(self.root, text="Commande:")
@@ -29,6 +34,7 @@ class ArduinoInterface:
 
         self.command_entry = tk.Entry(self.root, width=30)
         self.command_entry.grid(row=0, column=1, padx=10, pady=10)
+        self.command_entry.bind("<Return>", lambda event: self.send_command())
 
         self.send_button = tk.Button(self.root, text="Envoyer", command=self.send_command)
         self.send_button.grid(row=0, column=2, padx=10, pady=10)
@@ -54,14 +60,15 @@ class ArduinoInterface:
         self.mode_label = tk.Label(self.root, text="Mode:")
         self.mode_label.grid(row=5, column=0, padx=10, pady=10)
         self.mode_var = tk.StringVar(self.root)
-        self.mode_var.set("manuel")
-        self.mode_menu = tk.OptionMenu(self.root, self.mode_var, "manuel", "automatique", command=self.set_mode)
+        self.mode_var.set("Manuel")
+        self.mode_menu = tk.OptionMenu(self.root, self.mode_var, "Manuel", "Automatique", command=self.set_mode)
         self.mode_menu.grid(row=5, column=1, padx=10, pady=10)
 
         self.voltage_label = tk.Label(self.root, text="Voltage:")
         self.voltage_label.grid(row=6, column=0, padx=10, pady=10)
         self.voltage_entry = tk.Entry(self.root, width=10)
         self.voltage_entry.grid(row=6, column=1, padx=10, pady=10)
+        self.voltage_entry.bind("<Return>", lambda event: self.set_voltage())
 
         self.set_voltage_button = tk.Button(self.root, text="Fixer la tension", command=self.set_voltage)
         self.set_voltage_button.grid(row=6, column=2, padx=10, pady=10)
@@ -70,6 +77,7 @@ class ArduinoInterface:
         self.temp_label.grid(row=7, column=0, padx=10, pady=10)
         self.temp_entry = tk.Entry(self.root, width=10)
         self.temp_entry.grid(row=7, column=1, padx=10, pady=10)
+        self.temp_entry.bind("<Return>", lambda event: self.set_temperature())
 
         self.set_temp_button = tk.Button(self.root, text="Fixer la température", command=self.set_temperature)
         self.set_temp_button.grid(row=7, column=2, padx=10, pady=10)
@@ -79,16 +87,19 @@ class ArduinoInterface:
             self.ser = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=1)
             time.sleep(1)
             self.output_text.insert(tk.END, f"Port série {self.port} ouvert.\n")
+            self.output_text.see(tk.END)
             command = f"get_mode"
             #self.mode_var.set(envoyer_commande(command, self.ser))
         except serial.SerialException:
             self.output_text.insert(tk.END, "Erreur d'ouverture du port série.\n")
+            self.output_text.see(tk.END)
 
     def send_command(self):
         command = self.command_entry.get()
         if command and self.ser:
             response = envoyer_commande(command, self.ser)
             self.output_text.insert(tk.END, f"Envoyé: {command}\nRéponse: {response}\n")
+            self.output_text.see(tk.END)
             self.command_entry.delete(0, tk.END)
 
     def set_mode(self, mode):
@@ -97,6 +108,7 @@ class ArduinoInterface:
             command = f"set_mode {mode_value}"
             response = envoyer_commande(command, self.ser)
             self.output_text.insert(tk.END, f"Envoyé: {command}\nRéponse: {response}\n")
+            self.output_text.see(tk.END)
 
     def set_voltage(self):
         voltage = self.voltage_entry.get()
@@ -104,6 +116,8 @@ class ArduinoInterface:
             command = f"set_voltage {voltage}"
             response = envoyer_commande(command, self.ser)
             self.output_text.insert(tk.END, f"Envoyé: {command}\nRéponse: {response}\n")
+            self.output_text.see(tk.END)
+            self.voltage_entry.delete(0, tk.END)
 
     def set_temperature(self):
         temperature = self.temp_entry.get()
@@ -111,25 +125,35 @@ class ArduinoInterface:
             command = f"set_temp {temperature}"
             response = envoyer_commande(command, self.ser)
             self.output_text.insert(tk.END, f"Envoyé: {command}\nRéponse: {response}\n")
+            self.output_text.see(tk.END)
+            self.temp_entry.delete(0, tk.END)
 
     def read_data(self):
         if self.ser:
             try:
                 ligne = self.ser.readline().decode('utf-8', errors='ignore').strip()
                 if ligne.startswith("DATA:"):
-                    _, t_actu, t_milieu, t_laser, t_ocr1a = map(float, ligne[5:].split(","))
+                    temps, t_actu, t_milieu, t_laser, v_actu, v_milieu, v_laser, t_ocr1a  = map(float, ligne[5:].split(","))
                     self.output_text.insert(tk.END, f"Données: {ligne[5:]}\n")
                     self.t_actu.set(str(t_actu))
                     self.t_milieu.set(str(t_milieu))
                     self.t_laser.set(str(t_laser))
+                    self.v_actu.set(str(v_actu))
+                    self.v_milieu.set(str(v_milieu))
+                    self.v_laser.set(str(v_laser))
                     self.t_ocr1a.set(str(t_ocr1a))
+
+                    self.writer.writerow([temps, t_actu, t_milieu, t_laser, v_actu, v_milieu, v_laser, t_ocr1a])
             except Exception as e:
                 self.output_text.insert(tk.END, f"Erreur de lecture: {e}\n")
         self.root.after(1000, self.read_data)
+        self.output_text.see(tk.END)
 
     def on_closing(self):
         if self.ser:
             self.ser.close()
+        if not self.fichier.closed:
+            self.fichier.close()
         self.root.destroy()
 
 if __name__ == "__main__":

@@ -1,5 +1,9 @@
 # Envoyer commande au Arduino.
 # Liste de commandes : set_mode (1 ou 2), set_voltage (-1 à 1)
+import csv
+import os
+
+
 def envoyer_commande(commande, ser):
     """Envoie une commande et attend une réponse RESP:"""
     ser.write((commande + "\n").encode())
@@ -26,3 +30,19 @@ def lire_donnees(ser, writer):
         except Exception as e:
             print("Erreur de lecture :", e)
 
+def creer_fichier():
+    # Nom fichier csv pas utilisé
+    OUTPUT_FILE = "data"
+    i = 0
+    while (os.path.exists("./" + OUTPUT_FILE + str(i) + ".csv")):
+        i += 1
+    OUTPUT_FILE = OUTPUT_FILE + str(i) + ".csv"
+
+    # Création du fichier CSV et écriture de l'en-tête
+    fichier = open(OUTPUT_FILE, "w", newline='')
+    writer = csv.writer(fichier)
+    writer.writerow(["temps", "ACTU", "MILIEU", "LASER", "TENSION_ACTU", "TENSION_MILIEU", "TENSION_LASER",
+                         "DUTY CYCLE"])  # En-tête du fichier CSV
+
+    print(f"Fichier {OUTPUT_FILE} créé avec en-tête.")
+    return fichier, writer
