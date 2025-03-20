@@ -25,12 +25,12 @@ double y[N] = {0}; // files sortie
 int index = 0;
 double erreur_integrale = 0;
 
-
 // Saturation
-const int umin = 350;
-const int umax = 3500;
+const int umin = 130;
+const int umax = 850;
 
-bool mode_rep_echelon = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
+bool mode_rep_echelon = false;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
+bool stable = false;
 
 double temp_cible = 27.0;
 
@@ -43,6 +43,8 @@ volatile bool nouvelle_donnee = false;
 double PID_output(double cible, double mesure);
 double tension_a_temp(double tension);
 
+// A commenter si avec mega :
+//int OCR3A = 0;
 
 void setup() {
   // Pour print
@@ -54,27 +56,21 @@ void setup() {
   pinMode(ACTU, OUTPUT);
 
 
-  // Pour avoir fréquence de 4kHz et 16 bits sur le pwm
-  TCCR1A = (1 << COM1A1) | (1 << WGM11); // Mode Fast PWM avec TOP = ICR1
-  TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS10); // Mode 14, prescaler = 1
+  // Configuration timer pour interruptions
+  TCCR1A = 0;                       // Mode normal
+  TCCR1B = (1 << WGM12) | (1 << CS12) | (1 << CS10);  // Mode CTC, Prescaler 1024
+  OCR1A = 16000000 / (1024 * freq) - 1; 
+  TIMSK1 |= (1 << OCIE1A);          // Activer l’interruption
 
-  ICR1 = 4000;  // Définit la période pour obtenir 4 kHz
-  OCR1A = 1600; // entre 0 et 4000 (max 3700 sinon short... 0-3700 avec milieux environ a 1850)
 
-  // Timer2 pour test sur arduino uno
-  /*TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
-  TCCR2B = (1 << CS22);    // Prescaler de 64
-  OCR2A = 249;             // Calcul pour trouver OCR2A en fonction de la fréquence d'échantillonnage : (16 MHz / (prescaler *  62.5Hz)) - 1 = 249 
-  TIMSK2 |= (1 << OCIE2A); // Activer l’interruption du timer
-*/
-  // Timer 3: code officiel pour arduino mega
-  // Configurer Timer3 pour générer interruption
-  TCCR3A = 0;                      // Mode normal
-  TCCR3B = (1 << WGM32) | (1 << CS32) | (1 << CS30);  // CTC mode, prescaler 1024
-  OCR3A = 16000000 / (1024 * freq) - 1;                 
-  TIMSK3 |= (1 << OCIE3A);         // Activer l’interruption du timer
+  // A commenter si tests avec uno
+  // Pour avoir fréquence de 4kHz et 16 bits sur le PWM avec Timer3
+  TCCR3A = (1 << COM3A1) | (1 << WGM31); // Mode Fast PWM avec TOP = ICR3
+  TCCR3B = (1 << WGM33) | (1 << WGM32) | (1 << CS30); // Mode 14, prescaler = 1
+  ICR3 = 1000;  // Définit la période pour obtenir 1 kHz
+  OCR3A = 550; // entre 130 (ou 75 idéalement) et 850 (0V quand 490)
+
   
-
   // Configurer l’ADC
   ADMUX = (1 << REFS0);    // Référence AVCC, entrée (A0)
   ADCSRA = (1 << ADEN)  |  // Activer l’ADC
@@ -82,18 +78,19 @@ void setup() {
   // Complète une conversion en 104us (13 cycle d'horloge / fréquence adc = 104us)
 }
 
-// Routine interruption echantillonnage TIMER2 SI arduino uno
-ISR(TIMER3_COMPA_vect) {
-   //Sélectionner le canal ADC (A0, A1, A2)
-    ADMUX = (ADMUX & 0xF8) | canal_ADC; // Met à jour les bits MUX pour ADC0, ADC1 ou ADC2
 
-    ADCSRA |= (1 << ADSC);  // Lancer une conversion ADC
-    while (ADCSRA & (1 << ADSC));  // Attendre la fin de conversion
-    valeur_ADC[canal_ADC] = ADC;  // Lire la valeur (10 bits)
+ISR(TIMER1_COMPA_vect) {
+  //Sélectionner le canal ADC (A0, A1, A2)
+  ADMUX = (ADMUX & 0xF8) | canal_ADC; // Met à jour les bits MUX pour ADC0, ADC1 ou ADC2
 
-    canal_ADC = (canal_ADC + 1) % 3;
-    if (canal_ADC == 0) nouvelle_donnee = true; // Après une séquence complète (A0, A1, A2)
-  }
+  ADCSRA |= (1 << ADSC);  // Lancer une conversion ADC
+  while (ADCSRA & (1 << ADSC));  // Attendre la fin de conversion
+  valeur_ADC[canal_ADC] = ADC;  // Lire la valeur (10 bits)
+
+  canal_ADC = (canal_ADC + 1) % 3;
+  if (canal_ADC == 0) nouvelle_donnee = true; // Après une séquence complète (A0, A1, A2)
+}
+
 
 void loop() {
 
@@ -113,12 +110,8 @@ void loop() {
       }
     }
 
-    else if (commande.startsWith("get_mode ")){
-      if (mode_rep_echelon){
-        Serial.println("RESP:1");
-      } else {
-        Serial.println("RESP:2");
-      }
+    else if (commande == "get_mode"){
+      Serial.println("RESP:" + (String)mode_rep_echelon);
     }
 
     else if (commande.startsWith("set_voltage ")) {
@@ -139,7 +132,7 @@ void loop() {
           Serial.println("RESP:La tension ne respecte pas les bornes de -1V a 1V.");
         }
         else {
-          OCR1A = (volt + 1.) * umax/2;
+          OCR3A = (volt + 1.) * umax/2;
           Serial.print("RESP:Volts en entré: ");
           Serial.println(volt);
         } 
@@ -188,31 +181,32 @@ void loop() {
 
     // Afficher les donnees sur le serial monitor (pour export)
     Serial.print("DATA:");
-    Serial.print(millis()/1000.0);
+    Serial.print(millis()/1000.0, 0);
     Serial.print(",");
-    Serial.print(t_actu_traite);
+    Serial.print(t_actu_traite, 3);
     Serial.print(",");
-    Serial.print(t_milieu_traite);
+    Serial.print(t_milieu_traite, 3);
     Serial.print(",");
-    Serial.print(t_laser_traite);
+    Serial.print(t_laser_traite, 3);
     Serial.print(",");
-    Serial.print(t_actu_brut);
+    Serial.print(t_actu_brut, 3);
     Serial.print(",");
-    Serial.print(t_milieu_brut);
+    Serial.print(t_milieu_brut, 3);
     Serial.print(",");
-    Serial.print(t_milieu_brut);
+    Serial.print(t_laser_brut, 3);
 
     if (mode_rep_echelon){
     }
     else { // Mode controleur
       double sortie_pid = PID_output(temp_cible, t_laser_traite); 
       // ici on va vouloir changer la fréquence du pwm en fonction de sorti_PI :
-      OCR1A = sortie_pid;
+      OCR3A = sortie_pid;
     }
     Serial.print(",");
-    Serial.println(OCR1A);
+    Serial.print(OCR3A);
+    Serial.print(",");
+    Serial.println(stable);
     nouvelle_donnee = false;
-
 
   }
   
@@ -243,15 +237,16 @@ double PID_output(double cible, double mesure) {
     erreur_integrale -= erreur; // Anti-windup
   }
 
-  return constrain(output, 0., 3750.);
+  return constrain(output, umin, umax);
 }
 
 
 // Calcule temperature avec thermistance NTC (resistance descend si température monte)
 double tension_a_temp(double donne_brute) {
   // Transfert en tension et enlever gain et soustraction ampli
-  double tension = donne_brute * 5 / 1023.0 * 24000/100000 + 1.7929; // Avec soustracteur
-  //double tension = donne_brute * 5 / 1023.0; // Avec juste un diviseur de tension
+  double ref = analogRead(A7);
+  ref = ref*5./1023. + 0.02; // Tension drop de 0.02V lors de l'échantillonnage sur arduino
+  double tension = donne_brute * 5 / 1023.0 * 24000/100000 + ref; // Avec soustracteur
   double rt = tension * r_diviseur / (5 - tension) ; // diviseur tension
   double log_r = log(rt/r_25deg); // Simplifier calcul
   return 1/(A+B*log_r+C*log_r*log_r+D*log_r*log_r*log_r) - 273.15; // temperature en °C

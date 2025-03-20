@@ -1,0 +1,258 @@
+import serial
+import time
+import tkinter as tk
+from tkinter import scrolledtext
+from tkinter import simpledialog
+from tooltip import ToolTip
+from utils import lire_donnees, envoyer_commande, creer_fichier
+
+''' Dialogue pour selectionner le port série avant d'ouvrir la page principale 
+class PortSelectionDialog(simpledialog.Dialog):
+    def __init__(self, parent):
+        super().__init__(parent, title="Sélection du port")
+
+    def body(self, master):
+        self.geometry("300x70")
+        tk.Label(master, text="Entrez le port de l'Arduino : ").grid(row=0)
+        self.port_entry = tk.Entry(master)
+        self.port_entry.grid(row=0, column=1)
+        return self.port_entry
+
+    def apply(self):
+        self.result = self.port_entry.get()'''
+
+'''' Page principale '''
+class ArduinoInterface:
+    def __init__(self, root, port="COM9"):
+        self.root = root
+        self.root.title("Arduino Interface")
+        self.root.minsize(470, 690)
+
+        self.port = port
+        self.baudrate = 115200
+        self.ser = None
+
+        self.t_actu = tk.StringVar()
+        self.t_milieu = tk.StringVar()
+        self.t_laser = tk.StringVar()
+        self.v_actu = tk.StringVar()
+        self.v_milieu = tk.StringVar()
+        self.v_laser = tk.StringVar()
+        self.t_ocr1a = tk.StringVar()
+
+        self.stable = tk.BooleanVar()
+
+        self.create_widgets()
+        self.setup_serial()
+
+        self.fichier, self.writer = creer_fichier()
+
+    # Éléments dans la page
+    def create_widgets(self):
+        # Grid
+        self.root.columnconfigure(0, weight=1)
+        self.root.columnconfigure(1, weight=1)
+        self.root.columnconfigure(2, weight=3)
+        self.root.columnconfigure(3, weight=1)
+        self.root.columnconfigure(4, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        self.root.rowconfigure(1, weight=1)
+        self.root.rowconfigure(2, weight=1)
+        self.root.rowconfigure(3, weight=1)
+        self.root.rowconfigure(4, weight=1)
+        self.root.rowconfigure(5, weight=1)
+        self.root.rowconfigure(6, weight=1)
+        self.root.rowconfigure(7, weight=1)
+
+        # Envoyer commandes manuellement
+        self.command_label = tk.Label(self.root, text="Commande : ")
+        self.command_label.grid(row=0, column=1, padx=10, pady=10, sticky=tk.E)
+        ToolTip(self.command_label, msg="Liste de commandes : \n- set_mode {0 pour manuel, 1 pour auto}\n- set_voltage {-1 à 1}\n- set_temp {20 à 30}\n- get_mode")
+        self.command_entry = tk.Entry(self.root, width=30)
+        self.command_entry.grid(row=0, column=2, padx=10, pady=10)
+        self.command_entry.bind("<Return>", lambda event: self.send_command())
+        self.send_button = tk.Button(self.root, text="Envoyer", command=self.send_command)
+        self.send_button.grid(row=0, column=3, padx=10, pady=10, sticky=tk.W)
+
+
+        # Champ de texte pour afficher les données (lis le port série)
+        self.output_text = scrolledtext.ScrolledText(self.root, width=60, height=20)
+        self.output_text.grid(row=1, column=1, columnspan=3, padx=10, pady=10, sticky=tk.NSEW)
+
+
+        # Labels pour les températures
+        self.temp_actu_label = tk.Label(self.root, text="Température ACTU : ")
+        self.temp_actu_label.grid(row=2, column=1, padx=10, pady=10, sticky=tk.E)
+        self.temp_actu_entry = tk.Entry(self.root, textvariable=self.t_actu, state='readonly', justify="center")
+        self.temp_actu_entry.grid(row=2, column=2, padx=10, pady=10)
+
+        self.temp_milieu_label = tk.Label(self.root, text="Température MILIEU : ")
+        self.temp_milieu_label.grid(row=3, column=1, padx=10, pady=10, sticky=tk.E)
+        self.temp_milieu_entry = tk.Entry(self.root, textvariable=self.t_milieu, state='readonly', justify="center")
+        self.temp_milieu_entry.grid(row=3, column=2, padx=10, pady=10)
+
+        self.temp_laser_label = tk.Label(self.root, text="Température LASER : ")
+        self.temp_laser_label.grid(row=4, column=1, padx=10, pady=10, sticky=tk.E)
+        self.temp_laser_entry = tk.Entry(self.root, textvariable=self.t_laser, state='readonly', justify="center")
+        self.temp_laser_entry.grid(row=4, column=2, padx=10, pady=10)
+
+        # Voyant de stabilité
+        self.stabilite_label = tk.Label(self.root, text="Varie à partir de 0s")
+        self.stabilite_label.grid(row=4, column=3, padx=10, pady=10, sticky=tk.SW)
+        self.red_light_canvas = tk.Canvas(self.root, width=20, height=20, highlightthickness=0)
+        self.red_light_canvas.grid(row=5, column=3, padx=(54, 10), pady=10, sticky=tk.NW)
+        self.red_light = self.red_light_canvas.create_oval(2, 2, 18, 18, fill="red")
+
+        # Modes automatique ou manuel
+        self.mode_label = tk.Label(self.root, text="Mode : ")
+        self.mode_label.grid(row=5, column=1, padx=10, pady=10, sticky=tk.E)
+        self.mode_var = tk.StringVar(self.root)
+        self.mode_var.set("Manuel")
+        self.mode_button = tk.Button(self.root, textvariable=self.mode_var, command=self.show_mode_menu)
+        self.mode_button.grid(row=5, column=2, padx=10, pady=10)
+        self.mode_menu = tk.Menu(self.root, tearoff=0)
+        self.mode_menu.add_command(label="Manuel", command=lambda: self.set_mode("Manuel"))
+        self.mode_menu.add_command(label="Automatique", command=lambda: self.set_mode("Automatique"))
+
+        # Choisir manuellement tension appliquée (entre -1 et 1), doit etre en mode manuel
+        self.voltage_label = tk.Label(self.root, text="Voltage : ")
+        self.voltage_label.grid(row=6, column=1, padx=10, pady=10, sticky=tk.E)
+        self.voltage_entry = tk.Entry(self.root, width=10)
+        self.voltage_entry.grid(row=6, column=2, padx=10, pady=10)
+        self.voltage_entry.bind("<Return>", lambda event: self.set_voltage())
+        self.set_voltage_button = tk.Button(self.root, text="Fixer la tension", command=self.set_voltage)
+        self.set_voltage_button.grid(row=6, column=3, padx=10, pady=10, sticky=tk.W)
+
+        # Choisir manuellement la température (entre 20 et 30), doit etre en mode automatique
+        self.temp_label = tk.Label(self.root, text="Température : ")
+        self.temp_label.grid(row=7, column=1, padx=10, pady=10, sticky=tk.E)
+        self.temp_entry = tk.Entry(self.root, width=10)
+        self.temp_entry.grid(row=7, column=2, padx=10, pady=10)
+        self.temp_entry.bind("<Return>", lambda event: self.set_temperature())
+        self.set_temp_button = tk.Button(self.root, text="Fixer la température", command=self.set_temperature)
+        self.set_temp_button.grid(row=7, column=3, padx=10, pady=10, sticky=tk.W)
+
+    # Setup communication serie avec arduino
+    def setup_serial(self):
+        try:
+            self.ser = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=1)
+            time.sleep(2)
+            self.output_text.insert(tk.END, f"Port série {self.port} ouvert.\n")
+            self.output_text.see(tk.END)
+            # Bon mode au début
+            self.root.after(1000, self.send_get_mode_command)
+        except serial.SerialException:
+            self.output_text.insert(tk.END, "Erreur d'ouverture du port série.\n")
+            self.output_text.see(tk.END)
+
+    # Pour synchroniser le mode avec le Arduino au debut
+    def send_get_mode_command(self):
+        if self.ser:
+            command = "get_mode"
+            rep = envoyer_commande(command, self.ser)
+            self.mode_var.set("Manuel" if rep == 1 else "Automatique")
+
+    # Envoyer une commande
+    def send_command(self, command=""):
+        if command == "":
+            command = self.command_entry.get()
+        if command and self.ser:
+            response = envoyer_commande(command, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {response}\n")
+            self.output_text.see(tk.END)
+            self.command_entry.delete(0, tk.END)
+
+    # Afficher le menu pour choisir le mode
+    def show_mode_menu(self):
+        self.mode_menu.post(self.mode_button.winfo_rootx(), self.mode_button.winfo_rooty() + self.mode_button.winfo_height())
+
+    # Changer le mode
+    def set_mode(self, mode):
+        if self.ser:
+            mode_value = "1" if mode == "Manuel" else "0"
+            command = f"set_mode {mode_value}"
+            response = envoyer_commande(command, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {response}\n")
+            self.output_text.see(tk.END)
+            self.mode_var.set("Manuel" if mode == "Manuel" else "Automatique")
+
+    # Changer la tension
+    def set_voltage(self):
+        voltage = self.voltage_entry.get()
+        if voltage and self.ser:
+            command = f"set_voltage {voltage}"
+            response = envoyer_commande(command, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {response}\n")
+            self.output_text.see(tk.END)
+            self.voltage_entry.delete(0, tk.END)
+
+    # Changer la température
+    def set_temperature(self):
+        temperature = self.temp_entry.get()
+        if temperature and self.ser:
+            command = f"set_temp {temperature}"
+            response = envoyer_commande(command, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {response}\n")
+            self.output_text.see(tk.END)
+            self.temp_entry.delete(0, tk.END)
+
+    # Mettre à jour le voyant de stabilité
+    def set_stable(self, stable, temps):
+        if self.stable.get() != stable:
+            self.stable.set(stable)
+            if stable:
+                self.stabilite_label.config(text=f"Stable à partir de {temps}s")
+                self.red_light_canvas.itemconfig(self.red_light, fill="green")
+            else:
+                self.stabilite_label.config(text=f"Varie à partir de {temps}s")
+                self.red_light_canvas.itemconfig(self.red_light, fill="red")
+
+    # Lire les données en continu
+    def read_data(self):
+        if self.ser:
+            try:
+                ligne = self.ser.readline().decode('utf-8', errors='ignore').strip()
+                if ligne.startswith("DATA:"):
+                    temps, t_actu, t_milieu, t_laser, v_actu, v_milieu, v_laser, t_ocr1a, stable  = map(float, ligne[5:].split(","))
+                    self.output_text.insert(tk.END, f"Données: {ligne[5:]}\n")
+                    self.t_actu.set(str(t_actu))
+                    self.t_milieu.set(str(t_milieu))
+                    self.t_laser.set(str(t_laser))
+                    self.v_actu.set(str(v_actu))
+                    self.v_milieu.set(str(v_milieu))
+                    self.v_laser.set(str(v_laser))
+                    self.t_ocr1a.set(str(t_ocr1a))
+                    self.set_stable(stable == True, temps)
+
+                    self.writer.writerow([temps, t_actu, t_milieu, t_laser, v_actu, v_milieu, v_laser, t_ocr1a, stable])
+            except Exception as e:
+                self.output_text.insert(tk.END, f"Erreur de lecture: {e}\n")
+        self.root.after(1000, self.read_data)
+        self.output_text.see(tk.END)
+
+    # Afficher la liste de tous les commandes
+    def show_command_help(self):
+        help_text = "Possible commands:\n- set_mode 1\n- set_mode 2\n- set_voltage -1 to 1"
+        tk.messagebox.showinfo("Command Help", help_text)
+
+    # Gerer la fermeture
+    def on_closing(self):
+        if self.ser:
+            self.ser.close()
+        if not self.fichier.closed:
+            self.fichier.close()
+        self.root.destroy()
+
+if __name__ == "__main__":
+    # Ouvrir fenetre pour selectionner le port
+    root = tk.Tk()
+    root.withdraw()
+    #dialog = PortSelectionDialog(root)
+    port = "COM4"#dialog.result
+    if port:
+        # Ouvre la fenêtre principale
+        root.deiconify()
+        app = ArduinoInterface(root, port)
+        root.protocol("WM_DELETE_WINDOW", app.on_closing)
+        app.read_data()
+        root.mainloop()
