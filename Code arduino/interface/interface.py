@@ -5,6 +5,9 @@ from tkinter import scrolledtext
 from tkinter import simpledialog
 from tooltip import ToolTip
 from utils import lire_donnees, envoyer_commande, creer_fichier
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
 
 ''' Dialogue pour selectionner le port série avant d'ouvrir la page principale 
 class PortSelectionDialog(simpledialog.Dialog):
@@ -26,7 +29,7 @@ class ArduinoInterface:
     def __init__(self, root, port="COM9"):
         self.root = root
         self.root.title("Arduino Interface")
-        self.root.minsize(470, 690)
+        self.root.minsize(500, 690)
 
         self.port = port
         self.baudrate = 115200
@@ -35,12 +38,23 @@ class ArduinoInterface:
         self.t_actu = tk.StringVar()
         self.t_milieu = tk.StringVar()
         self.t_laser = tk.StringVar()
+        self.t_laser_estime = tk.StringVar()
+
+        self.temps_data = []
+        self.t_actu_data = []
+        self.t_milieu_data = []
+        self.t_laser_data = []
+        self.fig, self.ax = plt.subplots()
+        self.ax.set_title("Températures")
+        self.ax.set_xlabel("Temps (s)")
+        self.ax.set_ylabel("Température (°C)")
+
         self.v_actu = tk.StringVar()
         self.v_milieu = tk.StringVar()
         self.v_laser = tk.StringVar()
         self.t_ocr1a = tk.StringVar()
 
-        self.stable = tk.BooleanVar()
+        self.stable = tk.IntVar()
 
         self.create_widgets()
         self.setup_serial()
@@ -63,6 +77,7 @@ class ArduinoInterface:
         self.root.rowconfigure(5, weight=1)
         self.root.rowconfigure(6, weight=1)
         self.root.rowconfigure(7, weight=1)
+        self.root.rowconfigure(8, weight=1)
 
         # Envoyer commandes manuellement
         self.command_label = tk.Label(self.root, text="Commande : ")
@@ -76,31 +91,35 @@ class ArduinoInterface:
 
 
         # Champ de texte pour afficher les données (lis le port série)
-        self.output_text = scrolledtext.ScrolledText(self.root, width=60, height=20)
+        self.output_text = scrolledtext.ScrolledText(self.root, width=60, height=10)
         self.output_text.grid(row=1, column=1, columnspan=3, padx=10, pady=10, sticky=tk.NSEW)
 
+        # Graphique
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
+        self.canvas.get_tk_widget().grid(row=2, column=1, columnspan=3, rowspan=1, padx=10, pady=10, sticky=tk.NSEW)
 
         # Labels pour les températures
         self.temp_actu_label = tk.Label(self.root, text="Température ACTU : ")
-        self.temp_actu_label.grid(row=2, column=1, padx=10, pady=10, sticky=tk.E)
+        self.temp_actu_label.grid(row=3, column=1, padx=10, pady=(10,0), sticky=tk.S)
         self.temp_actu_entry = tk.Entry(self.root, textvariable=self.t_actu, state='readonly', justify="center")
-        self.temp_actu_entry.grid(row=2, column=2, padx=10, pady=10)
+        self.temp_actu_entry.grid(row=4, column=1, padx=10, pady=(0,10), sticky=tk.N)
 
         self.temp_milieu_label = tk.Label(self.root, text="Température MILIEU : ")
-        self.temp_milieu_label.grid(row=3, column=1, padx=10, pady=10, sticky=tk.E)
+        self.temp_milieu_label.grid(row=3, column=2, padx=10, pady=(10,0), sticky=tk.S)
         self.temp_milieu_entry = tk.Entry(self.root, textvariable=self.t_milieu, state='readonly', justify="center")
-        self.temp_milieu_entry.grid(row=3, column=2, padx=10, pady=10)
+        self.temp_milieu_entry.grid(row=4, column=2, padx=10, pady=(0,10), sticky=tk.N)
 
         self.temp_laser_label = tk.Label(self.root, text="Température LASER : ")
-        self.temp_laser_label.grid(row=4, column=1, padx=10, pady=10, sticky=tk.E)
+        self.temp_laser_label.grid(row=3, column=3, padx=10, pady=(10,0), sticky=tk.S)
         self.temp_laser_entry = tk.Entry(self.root, textvariable=self.t_laser, state='readonly', justify="center")
-        self.temp_laser_entry.grid(row=4, column=2, padx=10, pady=10)
+        self.temp_laser_entry.grid(row=4, column=3, padx=10, pady=(0,10), sticky=tk.N)
 
         # Voyant de stabilité
-        self.stabilite_label = tk.Label(self.root, text="Varie à partir de 0s")
-        self.stabilite_label.grid(row=4, column=3, padx=10, pady=10, sticky=tk.SW)
+        self.stabilite_label = tk.Label(self.root, text="Non stable à partir de 0s")
+        self.stabilite_label.grid(row=5, column=3, padx=10, pady=0, sticky=tk.N)
         self.red_light_canvas = tk.Canvas(self.root, width=20, height=20, highlightthickness=0)
-        self.red_light_canvas.grid(row=5, column=3, padx=(54, 10), pady=10, sticky=tk.NW)
+        self.red_light_canvas.grid(row=5, column=3, padx=10, pady=(10,0))
+        ToolTip(self.red_light_canvas, msg="Vert : stable\nJaune : semi-stable\nRouge : non stable")
         self.red_light = self.red_light_canvas.create_oval(2, 2, 18, 18, fill="red")
 
         # Modes automatique ou manuel
@@ -121,7 +140,7 @@ class ArduinoInterface:
         self.voltage_entry.grid(row=6, column=2, padx=10, pady=10)
         self.voltage_entry.bind("<Return>", lambda event: self.set_voltage())
         self.set_voltage_button = tk.Button(self.root, text="Fixer la tension", command=self.set_voltage)
-        self.set_voltage_button.grid(row=6, column=3, padx=10, pady=10, sticky=tk.W)
+        self.set_voltage_button.grid(row=6, column=3, padx=10, pady=10)
 
         # Choisir manuellement la température (entre 20 et 30), doit etre en mode automatique
         self.temp_label = tk.Label(self.root, text="Température : ")
@@ -130,7 +149,7 @@ class ArduinoInterface:
         self.temp_entry.grid(row=7, column=2, padx=10, pady=10)
         self.temp_entry.bind("<Return>", lambda event: self.set_temperature())
         self.set_temp_button = tk.Button(self.root, text="Fixer la température", command=self.set_temperature)
-        self.set_temp_button.grid(row=7, column=3, padx=10, pady=10, sticky=tk.W)
+        self.set_temp_button.grid(row=7, column=3, padx=10, pady=10)
 
     # Setup communication serie avec arduino
     def setup_serial(self):
@@ -200,12 +219,16 @@ class ArduinoInterface:
     def set_stable(self, stable, temps):
         if self.stable.get() != stable:
             self.stable.set(stable)
-            if stable:
-                self.stabilite_label.config(text=f"Stable à partir de {temps}s")
+            if stable == 1:
+                self.stabilite_label.config(text=f"Est stable à partir de {temps}s")
                 self.red_light_canvas.itemconfig(self.red_light, fill="green")
+            elif stable == 2:
+                self.stabilite_label.config(text=f"Semi-stable à partir de {temps}s")
+                self.red_light_canvas.itemconfig(self.red_light, fill="yellow")
             else:
-                self.stabilite_label.config(text=f"Varie à partir de {temps}s")
+                self.stabilite_label.config(text=f"Non stable à partir de {temps}s")
                 self.red_light_canvas.itemconfig(self.red_light, fill="red")
+
 
     # Lire les données en continu
     def read_data(self):
@@ -213,27 +236,42 @@ class ArduinoInterface:
             try:
                 ligne = self.ser.readline().decode('utf-8', errors='ignore').strip()
                 if ligne.startswith("DATA:"):
-                    temps, t_actu, t_milieu, t_laser, v_actu, v_milieu, v_laser, t_ocr1a, stable  = map(float, ligne[5:].split(","))
+                    temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, t_ocr1a, stable  = map(float, ligne[5:].split(","))
                     self.output_text.insert(tk.END, f"Données: {ligne[5:]}\n")
                     self.t_actu.set(str(t_actu))
                     self.t_milieu.set(str(t_milieu))
                     self.t_laser.set(str(t_laser))
+                    self.t_laser_estime.set(str(t_laser_estime))
                     self.v_actu.set(str(v_actu))
                     self.v_milieu.set(str(v_milieu))
                     self.v_laser.set(str(v_laser))
                     self.t_ocr1a.set(str(t_ocr1a))
                     self.set_stable(stable == True, temps)
 
-                    self.writer.writerow([temps, t_actu, t_milieu, t_laser, v_actu, v_milieu, v_laser, t_ocr1a, stable])
+                    self.writer.writerow([temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, t_ocr1a, stable])
+
+                    self.temps_data.append(temps)
+                    self.t_actu_data.append(t_actu)
+                    self.t_milieu_data.append(t_milieu)
+                    self.t_laser_data.append(t_laser)
+                    self.update_plot()
             except Exception as e:
                 self.output_text.insert(tk.END, f"Erreur de lecture: {e}\n")
         self.root.after(1000, self.read_data)
         self.output_text.see(tk.END)
 
-    # Afficher la liste de tous les commandes
-    def show_command_help(self):
-        help_text = "Possible commands:\n- set_mode 1\n- set_mode 2\n- set_voltage -1 to 1"
-        tk.messagebox.showinfo("Command Help", help_text)
+    def update_plot(self):
+        self.ax.clear()
+        self.ax.plot(self.temps_data, self.t_actu_data, label="Température ACTU")
+        self.ax.plot(self.temps_data, self.t_milieu_data, label="Température MILIEU")
+        self.ax.plot(self.temps_data, self.t_laser_data, label="Température LASER")
+
+        # Réappliquer les titres et labels
+        self.ax.set_title("Températures")
+        self.ax.set_xlabel("Temps (s)")
+        self.ax.set_ylabel("Température (°C)")
+        self.ax.legend()
+        self.canvas.draw()
 
     # Gerer la fermeture
     def on_closing(self):

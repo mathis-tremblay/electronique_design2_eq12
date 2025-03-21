@@ -38,11 +38,15 @@ const double a1 = -(tau-1)/(tau+1);
 double t2[2] = {24, 24}; // T2 mesuré
 double t3[2] = {24, 24}; // T3 estimé
 
-
-bool mode_rep_echelon = false;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
-bool stable = false;
+bool mode_rep_echelon = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
 
 double temp_cible = 27.0;
+
+// Stabilite
+bool stable = false;
+double tolerance = 0.1; // °C
+double t3_mesures[N] = {0}; // tableau circulaire mesures
+int indice = 0;
 
 // Variables lecteurs températures
 volatile uint16_t valeur_ADC[3];
@@ -53,9 +57,10 @@ volatile bool nouvelle_donnee = false;
 double PID_output(double cible, double mesure);
 double tension_a_temp(double tension);
 double estimer_t3(double t2_mesure);
+int verif_stable(double t3);
 
 // A commenter si avec mega :
-int OCR3A = 0;
+//int OCR3A = 0;
 
 void setup() {
   // Pour print
@@ -73,14 +78,14 @@ void setup() {
   OCR1A = 16000000 / (1024 * freq) - 1; 
   TIMSK1 |= (1 << OCIE1A);          // Activer l’interruption
 
-/*
+
   // A commenter si tests avec uno
   // Pour avoir fréquence de 4kHz et 16 bits sur le PWM avec Timer3
   TCCR3A = (1 << COM3A1) | (1 << WGM31); // Mode Fast PWM avec TOP = ICR3
   TCCR3B = (1 << WGM33) | (1 << WGM32) | (1 << CS30); // Mode 14, prescaler = 1
   ICR3 = 1000;  // Définit la période pour obtenir 1 kHz
   OCR3A = 550; // entre 130 (ou 75 idéalement) et 850 (0V quand 490)
-*/
+
   
   // Configurer l’ADC
   ADMUX = (1 << REFS0);    // Référence AVCC, entrée (A0)
@@ -213,14 +218,15 @@ void loop() {
     if (mode_rep_echelon){
     }
     else { // Mode controleur
-      double sortie_pid = PID_output(temp_cible, t_laser_traite); 
+      double sortie_pid = PID_output(temp_cible, t3_estime); 
       // ici on va vouloir changer la fréquence du pwm en fonction de sorti_PI :
       OCR3A = sortie_pid;
     }
     Serial.print(",");
     Serial.print(OCR3A);
+    int est_stable = verif_stable(t3_estime);
     Serial.print(",");
-    Serial.println(stable);
+    Serial.println(est_stable);
     nouvelle_donnee = false;
 
   }
@@ -267,8 +273,9 @@ double tension_a_temp(double donne_brute) {
   return 1/(A+B*log_r+C*log_r*log_r+D*log_r*log_r*log_r) - 273.15; // temperature en °C
 }
 
+// Estime T3 a partir de T2 avec une fonction de transfert (discretisee et recurrente)
 double estimer_t3(double t2_mesure){
-  float t3_estime = b0 * t2_mesure + b1 * t2[0] - a1 * t3[0];
+  float t3_estime = b0 * t2_mesure + b1 * t2[0] - a1 * t3[0]; // T3 = 0.89/(1+19.5s) * T2
 
   // Mettre à jour les variables
   t2[1] = t2[0];
@@ -278,5 +285,27 @@ double estimer_t3(double t2_mesure){
   t3[0] = t3_estime;
 
   return t3_estime;
+}
+
+/* Verifie stabilite de t3
+ * Stable (1) si 10 dernieres mesures sont a la cible +- la tolerance
+ * Semi-stable (2) si derniere mesure est stable mais pas toutes les 10 dernieres (pour pas avoir delai de 20 secondes)
+ * Instable (0) si un element de la liste pas dans tolerance et derniere mesure non plus
+*/
+int verif_stable(double t3){
+  int stable = 1; // init a stable
+  t3_mesures[indice] = t3; 
+  indice = (indice + 1) % N; // pour gerer liste
+  // Verif si un element dans la liste n'est pas dans la tolerance. Si oui, instable (ou semi-stable)
+  for (int i=0; i<N; i++){
+    if (abs(t3_mesures[i] - temp_cible) > tolerance){
+      stable = 0; //instable
+    }
+  }
+  // Si derniere mesure stable, mais pas 10 dernieres, alors semi-stable
+  if (abs(t3 - temp_cible) < tolerance && stable == 0){
+    stable = 2; // Semi-stable
+  }
+  return stable;
 }
 

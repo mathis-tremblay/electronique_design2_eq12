@@ -52,7 +52,7 @@ def creer_fichier():
     # Création du fichier CSV et écriture de l'en-tête
     fichier = open(OUTPUT_FILE, "w", newline='')
     writer = csv.writer(fichier)
-    writer.writerow(["temps", "ACTU", "MILIEU", "LASER", "TENSION_ACTU", "TENSION_MILIEU", "TENSION_LASER",
+    writer.writerow(["temps", "ACTU", "MILIEU", "LASER", "LASER_ESTIME", "TENSION_ACTU", "TENSION_MILIEU", "TENSION_LASER",
                          "DUTY CYCLE (0 - 1000)"])  # En-tête du fichier CSV
 
     print(f"Fichier {OUTPUT_FILE} créé avec en-tête.")
