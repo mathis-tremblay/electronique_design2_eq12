@@ -18,7 +18,7 @@ const double Kp = 0.00062;
 const double Ki = 0.11735;
 const double Kd = 0;
 
-// Memoire donnees pour integrale
+// Memoire donnees pour PID
 const int N = 10;
 double u[N] = {0}; // files entrees
 double y[N] = {0}; // files sortie
@@ -28,6 +28,16 @@ double erreur_integrale = 0;
 // Saturation
 const int umin = 130;
 const int umax = 850;
+
+// Variables pour calculer T3 estimé (calculs en assumant T=2)
+const double K = 0.89;
+const double tau = 19.5;
+const double b0 = K/(tau + 1);
+const double b1 = K/(tau + 1);
+const double a1 = -(tau-1)/(tau+1);
+double t2[2] = {24, 24}; // T2 mesuré
+double t3[2] = {24, 24}; // T3 estimé
+
 
 bool mode_rep_echelon = false;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
 bool stable = false;
@@ -42,9 +52,10 @@ volatile bool nouvelle_donnee = false;
 // Déclarations fonctions
 double PID_output(double cible, double mesure);
 double tension_a_temp(double tension);
+double estimer_t3(double t2_mesure);
 
 // A commenter si avec mega :
-//int OCR3A = 0;
+int OCR3A = 0;
 
 void setup() {
   // Pour print
@@ -62,14 +73,14 @@ void setup() {
   OCR1A = 16000000 / (1024 * freq) - 1; 
   TIMSK1 |= (1 << OCIE1A);          // Activer l’interruption
 
-
+/*
   // A commenter si tests avec uno
   // Pour avoir fréquence de 4kHz et 16 bits sur le PWM avec Timer3
   TCCR3A = (1 << COM3A1) | (1 << WGM31); // Mode Fast PWM avec TOP = ICR3
   TCCR3B = (1 << WGM33) | (1 << WGM32) | (1 << CS30); // Mode 14, prescaler = 1
   ICR3 = 1000;  // Définit la période pour obtenir 1 kHz
   OCR3A = 550; // entre 130 (ou 75 idéalement) et 850 (0V quand 490)
-
+*/
   
   // Configurer l’ADC
   ADMUX = (1 << REFS0);    // Référence AVCC, entrée (A0)
@@ -178,6 +189,8 @@ void loop() {
     double t_milieu_traite = tension_a_temp(valeur_ADC[1]);
     double t_laser_traite = tension_a_temp(valeur_ADC[2]);
 
+    double t3_estime = estimer_t3(t_milieu_traite);
+
 
     // Afficher les donnees sur le serial monitor (pour export)
     Serial.print("DATA:");
@@ -188,6 +201,8 @@ void loop() {
     Serial.print(t_milieu_traite, 3);
     Serial.print(",");
     Serial.print(t_laser_traite, 3);
+    Serial.print(",");
+    Serial.print(t3_estime, 3);
     Serial.print(",");
     Serial.print(t_actu_brut, 3);
     Serial.print(",");
@@ -250,5 +265,18 @@ double tension_a_temp(double donne_brute) {
   double rt = tension * r_diviseur / (5 - tension) ; // diviseur tension
   double log_r = log(rt/r_25deg); // Simplifier calcul
   return 1/(A+B*log_r+C*log_r*log_r+D*log_r*log_r*log_r) - 273.15; // temperature en °C
+}
+
+double estimer_t3(double t2_mesure){
+  float t3_estime = b0 * t2_mesure + b1 * t2[0] - a1 * t3[0];
+
+  // Mettre à jour les variables
+  t2[1] = t2[0];
+  t2[0] = t2_mesure;
+
+  t3[1] = t3[0];
+  t3[0] = t3_estime;
+
+  return t3_estime;
 }
 
