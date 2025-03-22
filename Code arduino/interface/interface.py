@@ -40,19 +40,26 @@ class ArduinoInterface:
         self.t_laser = tk.StringVar()
         self.t_laser_estime = tk.StringVar()
 
+        self.temp_cible = tk.StringVar()
+
         self.temps_data = []
         self.t_actu_data = []
         self.t_milieu_data = []
         self.t_laser_data = []
-        self.fig, self.ax = plt.subplots()
+        self.t_laser_estime_data = []
+        self.commande_data = []
+        self.fig, (self.ax, self.ax_commande) = plt.subplots(2, 1, sharex=True)
         self.ax.set_title("Températures")
         self.ax.set_xlabel("Temps (s)")
         self.ax.set_ylabel("Température (°C)")
+        self.ax_commande.set_title("Commande")
+        self.ax_commande.set_xlabel("Temps (s)")
+        self.ax_commande.set_ylabel("OCR3A (0-1000)")
 
         self.v_actu = tk.StringVar()
         self.v_milieu = tk.StringVar()
         self.v_laser = tk.StringVar()
-        self.t_ocr1a = tk.StringVar()
+        self.ocr3a = tk.StringVar()
 
         self.stable = tk.IntVar()
 
@@ -71,7 +78,7 @@ class ArduinoInterface:
         self.root.columnconfigure(4, weight=1)
         self.root.rowconfigure(0, weight=1)
         self.root.rowconfigure(1, weight=1)
-        self.root.rowconfigure(2, weight=1)
+        self.root.rowconfigure(2, weight=4)
         self.root.rowconfigure(3, weight=1)
         self.root.rowconfigure(4, weight=1)
         self.root.rowconfigure(5, weight=1)
@@ -91,7 +98,7 @@ class ArduinoInterface:
 
 
         # Champ de texte pour afficher les données (lis le port série)
-        self.output_text = scrolledtext.ScrolledText(self.root, width=60, height=10)
+        self.output_text = scrolledtext.ScrolledText(self.root, width=60, height=8)
         self.output_text.grid(row=1, column=1, columnspan=3, padx=10, pady=10, sticky=tk.NSEW)
 
         # Graphique
@@ -146,8 +153,10 @@ class ArduinoInterface:
         self.temp_label = tk.Label(self.root, text="Température : ")
         self.temp_label.grid(row=7, column=1, padx=10, pady=10, sticky=tk.E)
         self.temp_entry = tk.Entry(self.root, width=10)
-        self.temp_entry.grid(row=7, column=2, padx=10, pady=10)
+        self.temp_entry.grid(row=7, column=2, padx=(10,100), pady=10)
         self.temp_entry.bind("<Return>", lambda event: self.set_temperature())
+        self.temp_cible_mtn = tk.Entry(self.root, width=10, textvariable=self.temp_cible, state='readonly', justify="center")
+        self.temp_cible_mtn.grid(row=7, column=2, padx=(100,10), pady=10)
         self.set_temp_button = tk.Button(self.root, text="Fixer la température", command=self.set_temperature)
         self.set_temp_button.grid(row=7, column=3, padx=10, pady=10)
 
@@ -159,17 +168,18 @@ class ArduinoInterface:
             self.output_text.insert(tk.END, f"Port série {self.port} ouvert.\n")
             self.output_text.see(tk.END)
             # Bon mode au début
-            self.root.after(1000, self.send_get_mode_command)
+            self.root.after(1000, self.sync)
         except serial.SerialException:
             self.output_text.insert(tk.END, "Erreur d'ouverture du port série.\n")
             self.output_text.see(tk.END)
 
-    # Pour synchroniser le mode avec le Arduino au debut
-    def send_get_mode_command(self):
+    # Pour synchroniser le mode et la temperature cible avec le Arduino au debut
+    def sync(self):
         if self.ser:
-            command = "get_mode"
-            rep = envoyer_commande(command, self.ser)
+            rep = envoyer_commande("get_mode", self.ser)
             self.mode_var.set("Manuel" if rep == 1 else "Automatique")
+            rep = envoyer_commande("get_temp_cible", self.ser)
+            self.temp_cible.set(rep)
 
     # Envoyer une commande
     def send_command(self, command=""):
@@ -210,10 +220,12 @@ class ArduinoInterface:
         temperature = self.temp_entry.get()
         if temperature and self.ser:
             command = f"set_temp {temperature}"
-            response = envoyer_commande(command, self.ser)
-            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {response}\n")
+            reponse = envoyer_commande(command, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {reponse}\n")
             self.output_text.see(tk.END)
             self.temp_entry.delete(0, tk.END)
+            if reponse != "Aucune réponse, veuillez réessayer.":
+                self.temp_cible.set(temperature)
 
     # Mettre à jour le voyant de stabilité
     def set_stable(self, stable, temps):
@@ -236,7 +248,7 @@ class ArduinoInterface:
             try:
                 ligne = self.ser.readline().decode('utf-8', errors='ignore').strip()
                 if ligne.startswith("DATA:"):
-                    temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, t_ocr1a, stable  = map(float, ligne[5:].split(","))
+                    temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, ocr3a, stable  = map(float, ligne[5:].split(","))
                     self.output_text.insert(tk.END, f"Données: {ligne[5:]}\n")
                     self.t_actu.set(str(t_actu))
                     self.t_milieu.set(str(t_milieu))
@@ -245,15 +257,17 @@ class ArduinoInterface:
                     self.v_actu.set(str(v_actu))
                     self.v_milieu.set(str(v_milieu))
                     self.v_laser.set(str(v_laser))
-                    self.t_ocr1a.set(str(t_ocr1a))
+                    self.ocr3a.set(str(ocr3a))
                     self.set_stable(stable == True, temps)
 
-                    self.writer.writerow([temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, t_ocr1a, stable])
+                    self.writer.writerow([temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, ocr3a, stable])
 
                     self.temps_data.append(temps)
                     self.t_actu_data.append(t_actu)
                     self.t_milieu_data.append(t_milieu)
                     self.t_laser_data.append(t_laser)
+                    self.t_laser_estime_data.append(t_laser_estime)
+                    self.commande_data.append(ocr3a)
                     self.update_plot()
             except Exception as e:
                 self.output_text.insert(tk.END, f"Erreur de lecture: {e}\n")
@@ -262,15 +276,23 @@ class ArduinoInterface:
 
     def update_plot(self):
         self.ax.clear()
-        self.ax.plot(self.temps_data, self.t_actu_data, label="Température ACTU")
-        self.ax.plot(self.temps_data, self.t_milieu_data, label="Température MILIEU")
-        self.ax.plot(self.temps_data, self.t_laser_data, label="Température LASER")
+        self.ax.plot(self.temps_data, self.t_actu_data, label="Actuateur")
+        self.ax.plot(self.temps_data, self.t_milieu_data, label="Milieu")
+        self.ax.plot(self.temps_data, self.t_laser_data, label="Laser")
+        self.ax.plot(self.temps_data, self.t_laser_estime_data, label="Laser estimé ")
 
         # Réappliquer les titres et labels
         self.ax.set_title("Températures")
-        self.ax.set_xlabel("Temps (s)")
         self.ax.set_ylabel("Température (°C)")
         self.ax.legend()
+
+        self.ax_commande.clear()
+        self.ax_commande.plot(self.temps_data, self.commande_data, label="Commande", color='tab:orange')
+        self.ax_commande.set_title("Commande")
+        self.ax_commande.set_xlabel("Temps (s)")
+        self.ax_commande.set_ylabel("OCR3A (0-1000)")
+        self.ax_commande.legend()
+
         self.canvas.draw()
 
     # Gerer la fermeture

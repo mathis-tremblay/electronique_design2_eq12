@@ -41,6 +41,7 @@ double t3[2] = {24, 24}; // T3 estimé
 bool mode_rep_echelon = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
 
 double temp_cible = 27.0;
+double temp_piece = 24.0; // Point d'operation, mesuré dans le setup
 
 // Stabilite
 bool stable = false;
@@ -60,7 +61,7 @@ double estimer_t3(double t2_mesure);
 int verif_stable(double t3);
 
 // A commenter si avec mega :
-//int OCR3A = 0;
+int OCR3A = 0;
 
 void setup() {
   // Pour print
@@ -78,20 +79,25 @@ void setup() {
   OCR1A = 16000000 / (1024 * freq) - 1; 
   TIMSK1 |= (1 << OCIE1A);          // Activer l’interruption
 
-
+/*
   // A commenter si tests avec uno
   // Pour avoir fréquence de 4kHz et 16 bits sur le PWM avec Timer3
   TCCR3A = (1 << COM3A1) | (1 << WGM31); // Mode Fast PWM avec TOP = ICR3
   TCCR3B = (1 << WGM33) | (1 << WGM32) | (1 << CS30); // Mode 14, prescaler = 1
   ICR3 = 1000;  // Définit la période pour obtenir 1 kHz
   OCR3A = 550; // entre 130 (ou 75 idéalement) et 850 (0V quand 490)
-
+*/
   
   // Configurer l’ADC
   ADMUX = (1 << REFS0);    // Référence AVCC, entrée (A0)
   ADCSRA = (1 << ADEN)  |  // Activer l’ADC
            (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); // Prescaler 128 (16MHz / prescaler = 125kHz ADC)
   // Complète une conversion en 104us (13 cycle d'horloge / fréquence adc = 104us)
+
+  // Point d'operation (temperature piece)
+  float tension_operation = analogRead(T_MILIEU)*5./1023.;
+  temp_piece = tension_a_temp(tension_operation);
+  Serial.println(temp_piece);
 }
 
 
@@ -128,6 +134,10 @@ void loop() {
 
     else if (commande == "get_mode"){
       Serial.println("RESP:" + (String)mode_rep_echelon);
+    }
+
+    else if (commande == "get_temp_cible"){
+      Serial.println("RESP:" + (String)temp_cible);
     }
 
     else if (commande.startsWith("set_voltage ")) {
@@ -275,16 +285,17 @@ double tension_a_temp(double donne_brute) {
 
 // Estime T3 a partir de T2 avec une fonction de transfert (discretisee et recurrente)
 double estimer_t3(double t2_mesure){
-  float t3_estime = b0 * t2_mesure + b1 * t2[0] - a1 * t3[0]; // T3 = 0.89/(1+19.5s) * T2
+  double t2_op = t2_mesure - temp_piece; // Enlever le point d'operation
+  double t3_estime_op = b0 * t2_op + b1 * t2[0] - a1 * t3[0]; // T3 = 0.89/(1+19.5s) * T2
 
   // Mettre à jour les variables
   t2[1] = t2[0];
-  t2[0] = t2_mesure;
+  t2[0] = t2_op;
 
   t3[1] = t3[0];
-  t3[0] = t3_estime;
+  t3[0] = t3_estime_op;
 
-  return t3_estime;
+  return t3_estime_op + temp_piece;
 }
 
 /* Verifie stabilite de t3
