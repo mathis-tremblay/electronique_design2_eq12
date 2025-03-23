@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
-''' Dialogue pour selectionner le port série avant d'ouvrir la page principale 
+# Dialogue pour selectionner le port série avant d'ouvrir la page principale
 class PortSelectionDialog(simpledialog.Dialog):
     def __init__(self, parent):
         super().__init__(parent, title="Sélection du port")
@@ -22,7 +22,7 @@ class PortSelectionDialog(simpledialog.Dialog):
         return self.port_entry
 
     def apply(self):
-        self.result = self.port_entry.get()'''
+        self.result = self.port_entry.get()
 
 '''' Page principale '''
 class ArduinoInterface:
@@ -54,12 +54,12 @@ class ArduinoInterface:
         self.ax.set_ylabel("Température (°C)")
         self.ax_commande.set_title("Commande")
         self.ax_commande.set_xlabel("Temps (s)")
-        self.ax_commande.set_ylabel("OCR3A (0-1000)")
+        self.ax_commande.set_ylabel("OCR1A (0-1000)")
 
         self.v_actu = tk.StringVar()
         self.v_milieu = tk.StringVar()
         self.v_laser = tk.StringVar()
-        self.ocr3a = tk.StringVar()
+        self.ocr1a = tk.StringVar()
 
         self.stable = tk.IntVar()
 
@@ -177,7 +177,7 @@ class ArduinoInterface:
     def sync(self):
         if self.ser:
             rep = envoyer_commande("get_mode", self.ser)
-            self.mode_var.set("Manuel" if rep == 1 else "Automatique")
+            self.mode_var.set("Manuel" if rep == "1" else "Automatique")
             rep = envoyer_commande("get_temp_cible", self.ser)
             self.temp_cible.set(rep)
 
@@ -248,7 +248,7 @@ class ArduinoInterface:
             try:
                 ligne = self.ser.readline().decode('utf-8', errors='ignore').strip()
                 if ligne.startswith("DATA:"):
-                    temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, ocr3a, stable  = map(float, ligne[5:].split(","))
+                    temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, ocr1a, stable  = map(float, ligne[5:].split(","))
                     self.output_text.insert(tk.END, f"Données: {ligne[5:]}\n")
                     self.t_actu.set(str(t_actu))
                     self.t_milieu.set(str(t_milieu))
@@ -257,17 +257,17 @@ class ArduinoInterface:
                     self.v_actu.set(str(v_actu))
                     self.v_milieu.set(str(v_milieu))
                     self.v_laser.set(str(v_laser))
-                    self.ocr3a.set(str(ocr3a))
-                    self.set_stable(stable == True, temps)
+                    self.ocr1a.set(str(ocr1a))
+                    self.set_stable(stable, temps)
 
-                    self.writer.writerow([temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, ocr3a, stable])
+                    self.writer.writerow([temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, ocr1a, stable])
 
                     self.temps_data.append(temps)
                     self.t_actu_data.append(t_actu)
                     self.t_milieu_data.append(t_milieu)
                     self.t_laser_data.append(t_laser)
                     self.t_laser_estime_data.append(t_laser_estime)
-                    self.commande_data.append(ocr3a)
+                    self.commande_data.append(ocr1a)
                     self.update_plot()
             except Exception as e:
                 self.output_text.insert(tk.END, f"Erreur de lecture: {e}\n")
@@ -290,7 +290,7 @@ class ArduinoInterface:
         self.ax_commande.plot(self.temps_data, self.commande_data, label="Commande", color='tab:orange')
         self.ax_commande.set_title("Commande")
         self.ax_commande.set_xlabel("Temps (s)")
-        self.ax_commande.set_ylabel("OCR3A (0-1000)")
+        self.ax_commande.set_ylabel("OCR1A (0-1000)")
         self.ax_commande.legend()
 
         self.canvas.draw()
@@ -307,8 +307,8 @@ if __name__ == "__main__":
     # Ouvrir fenetre pour selectionner le port
     root = tk.Tk()
     root.withdraw()
-    #dialog = PortSelectionDialog(root)
-    port = "COM4"#dialog.result
+    dialog = PortSelectionDialog(root)
+    port = dialog.result
     if port:
         # Ouvre la fenêtre principale
         root.deiconify()

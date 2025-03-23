@@ -1,3 +1,5 @@
+
+
 // Constantes pour les pins
 const int T_ACTU = A0;
 const int T_MILIEU = A1;
@@ -26,8 +28,8 @@ int index = 0;
 double erreur_integrale = 0;
 
 // Saturation
-const int umin = 130;
-const int umax = 850;
+const int umin = 140;
+const int umax = 840;
 
 // Variables pour calculer T3 estimé (calculs en assumant T=2)
 const double K = 0.89;
@@ -35,8 +37,8 @@ const double tau = 19.5;
 const double b0 = K/(tau + 1);
 const double b1 = K/(tau + 1);
 const double a1 = -(tau-1)/(tau+1);
-double t2[2] = {24, 24}; // T2 mesuré
-double t3[2] = {24, 24}; // T3 estimé
+double t2[2] = {0, 0}; // T2 mesuré
+double t3[2] = {0, 0}; // T3 estimé
 
 bool mode_rep_echelon = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
 
@@ -45,7 +47,7 @@ double temp_piece = 24.0; // Point d'operation, mesuré dans le setup
 
 // Stabilite
 bool stable = false;
-double tolerance = 0.1; // °C
+double tolerance = 0.8; // °C
 double t3_mesures[N] = {0}; // tableau circulaire mesures
 int indice = 0;
 
@@ -55,13 +57,12 @@ volatile uint8_t canal_ADC = 0;   // numero pin en cours de lecture
 volatile bool nouvelle_donnee = false;
 
 // Déclarations fonctions
+double bits_a_tension(double donne_brute);
 double PID_output(double cible, double mesure);
 double tension_a_temp(double tension);
 double estimer_t3(double t2_mesure);
 int verif_stable(double t3);
 
-// A commenter si avec mega :
-int OCR3A = 0;
 
 void setup() {
   // Pour print
@@ -72,36 +73,50 @@ void setup() {
   pinMode(T_LASER, INPUT);
   pinMode(ACTU, OUTPUT);
 
+  // Pour avoir fréquence de 1kHz et 16 bits sur le pwm
+  TCCR1A = (1 << COM1A1) | (1 << WGM11); // Mode Fast PWM avec TOP = ICR1
+  TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS10); // Mode 14, prescaler = 1
+  ICR1 = 1000;  // Définit la période pour obtenir 1kHz
+  OCR1A = 550; // entre 130 (ou 75 idéalement) et 850 (0V quand 490)
 
-  // Configuration timer pour interruptions
-  TCCR1A = 0;                       // Mode normal
-  TCCR1B = (1 << WGM12) | (1 << CS12) | (1 << CS10);  // Mode CTC, Prescaler 1024
-  OCR1A = 16000000 / (1024 * freq) - 1; 
-  TIMSK1 |= (1 << OCIE1A);          // Activer l’interruption
-
-/*
-  // A commenter si tests avec uno
-  // Pour avoir fréquence de 4kHz et 16 bits sur le PWM avec Timer3
-  TCCR3A = (1 << COM3A1) | (1 << WGM31); // Mode Fast PWM avec TOP = ICR3
-  TCCR3B = (1 << WGM33) | (1 << WGM32) | (1 << CS30); // Mode 14, prescaler = 1
-  ICR3 = 1000;  // Définit la période pour obtenir 1 kHz
-  OCR3A = 550; // entre 130 (ou 75 idéalement) et 850 (0V quand 490)
+  // Timer2 pour test sur arduino uno
+  /*TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
+  TCCR2B = (1 << CS22);    // Prescaler de 64
+  OCR2A = 249;             // Calcul pour trouver OCR2A en fonction de la fréquence d'échantillonnage : (16 MHz / (prescaler *  62.5Hz)) - 1 = 249 
+  TIMSK2 |= (1 << OCIE2A); // Activer l’interruption du timer
 */
+  // Timer 3: code officiel pour arduino mega
+  // Configurer Timer3 pour générer interruption
+  TCCR3A = 0;                      // Mode normal
+  TCCR3B = (1 << WGM32) | (1 << CS32) | (1 << CS30);  // CTC mode, prescaler 1024
+  OCR3A = 16000000 / (1024 * freq) - 1;                 
+  TIMSK3 |= (1 << OCIE3A);         // Activer l’interruption du timer
   
+
   // Configurer l’ADC
   ADMUX = (1 << REFS0);    // Référence AVCC, entrée (A0)
   ADCSRA = (1 << ADEN)  |  // Activer l’ADC
            (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); // Prescaler 128 (16MHz / prescaler = 125kHz ADC)
   // Complète une conversion en 104us (13 cycle d'horloge / fréquence adc = 104us)
 
-  // Point d'operation (temperature piece)
-  float tension_operation = analogRead(T_MILIEU)*5./1023.;
+  delay(2000);
+  double somme = 0;
+  const int nbMesures = 10; 
+  for (int i = 0; i < nbMesures; i++) {
+    somme += analogRead(T_MILIEU);
+    delay(10);
+  }
+  double bits_operation = somme / nbMesures;
+  double tension_operation = bits_a_tension(bits_operation);
+  Serial.print("Tension mesurée: ");
+  Serial.println(tension_operation);
   temp_piece = tension_a_temp(tension_operation);
+  Serial.print("Température point d'opération: ");
   Serial.println(temp_piece);
 }
 
 
-ISR(TIMER1_COMPA_vect) {
+ISR(TIMER3_COMPA_vect) {
   //Sélectionner le canal ADC (A0, A1, A2)
   ADMUX = (ADMUX & 0xF8) | canal_ADC; // Met à jour les bits MUX pour ADC0, ADC1 ou ADC2
 
@@ -158,7 +173,7 @@ void loop() {
           Serial.println("RESP:La tension ne respecte pas les bornes de -1V a 1V.");
         }
         else {
-          OCR3A = (volt + 1.) * umax/2;
+          OCR1A = map(volt*500, -500, 500, umin, umax);
           Serial.print("RESP:Volts en entré: ");
           Serial.println(volt);
         } 
@@ -194,46 +209,46 @@ void loop() {
   // attendre qu'on recupere une nouvelle donnee
   if (nouvelle_donnee) {
     // Conversions ADC (10 bits)
-    // Tensions (pour récolte données)
-    double t_actu_brut = valeur_ADC[0] * 5 / 1023.0 * 24000/100000 + 1.7929;
-    double t_milieu_brut = valeur_ADC[1] * 5 / 1023.0 * 24000/100000 + 1.7929;
-    double t_laser_brut = valeur_ADC[2] * 5 / 1023.0 * 24000/100000 + 1.7929;
+    // Tensions
+    double v_actu = bits_a_tension(valeur_ADC[0]);
+    double v_milieu = bits_a_tension(valeur_ADC[1]);
+    double v_laser = bits_a_tension(valeur_ADC[2]);
 
     // Convertir les tensions en températures
-    double t_actu_traite = tension_a_temp(valeur_ADC[0]);
-    double t_milieu_traite = tension_a_temp(valeur_ADC[1]);
-    double t_laser_traite = tension_a_temp(valeur_ADC[2]);
+    double t_actu = tension_a_temp(v_actu);
+    double t_milieu = tension_a_temp(v_milieu);
+    double t_laser = tension_a_temp(v_laser);
 
-    double t3_estime = estimer_t3(t_milieu_traite);
+    double t3_estime = estimer_t3(t_milieu);
 
 
     // Afficher les donnees sur le serial monitor (pour export)
     Serial.print("DATA:");
     Serial.print(millis()/1000.0, 0);
     Serial.print(",");
-    Serial.print(t_actu_traite, 3);
+    Serial.print(t_actu, 3);
     Serial.print(",");
-    Serial.print(t_milieu_traite, 3);
+    Serial.print(t_milieu, 3);
     Serial.print(",");
-    Serial.print(t_laser_traite, 3);
+    Serial.print(t_laser, 3);
     Serial.print(",");
     Serial.print(t3_estime, 3);
     Serial.print(",");
-    Serial.print(t_actu_brut, 3);
+    Serial.print(v_actu, 3);
     Serial.print(",");
-    Serial.print(t_milieu_brut, 3);
+    Serial.print(v_milieu, 3);
     Serial.print(",");
-    Serial.print(t_laser_brut, 3);
+    Serial.print(v_laser, 3);
 
     if (mode_rep_echelon){
     }
     else { // Mode controleur
       double sortie_pid = PID_output(temp_cible, t3_estime); 
       // ici on va vouloir changer la fréquence du pwm en fonction de sorti_PI :
-      OCR3A = sortie_pid;
+      OCR1A = sortie_pid;
     }
     Serial.print(",");
-    Serial.print(OCR3A);
+    Serial.print(OCR1A);
     int est_stable = verif_stable(t3_estime);
     Serial.print(",");
     Serial.println(est_stable);
@@ -271,13 +286,17 @@ double PID_output(double cible, double mesure) {
   return constrain(output, umin, umax);
 }
 
-
-// Calcule temperature avec thermistance NTC (resistance descend si température monte)
-double tension_a_temp(double donne_brute) {
+// Calcul la tension a partir du resultat de 0 a 1023
+double bits_a_tension(double donne_brute){
   // Transfert en tension et enlever gain et soustraction ampli
   double ref = analogRead(A7);
-  ref = ref*5./1023. + 0.02; // Tension drop de 0.02V lors de l'échantillonnage sur arduino
+  ref = ref*5./1023. + 0.04; // Tension drop de 0.02V lors de l'échantillonnage sur arduino
   double tension = donne_brute * 5 / 1023.0 * 24000/100000 + ref; // Avec soustracteur
+  return tension;
+}
+
+// Calcule temperature avec thermistance NTC (resistance descend si température monte)
+double tension_a_temp(double tension) {
   double rt = tension * r_diviseur / (5 - tension) ; // diviseur tension
   double log_r = log(rt/r_25deg); // Simplifier calcul
   return 1/(A+B*log_r+C*log_r*log_r+D*log_r*log_r*log_r) - 273.15; // temperature en °C
@@ -286,15 +305,24 @@ double tension_a_temp(double donne_brute) {
 // Estime T3 a partir de T2 avec une fonction de transfert (discretisee et recurrente)
 double estimer_t3(double t2_mesure){
   double t2_op = t2_mesure - temp_piece; // Enlever le point d'operation
-  double t3_estime_op = b0 * t2_op + b1 * t2[0] - a1 * t3[0]; // T3 = 0.89/(1+19.5s) * T2
-
+  Serial.print(t2_mesure);
+  Serial.print(", ");
+  Serial.print(t2_op);
+  double t3_estime_op = 0.0867 * t2_op + 0.9026 * t3[0]; // T3 = 0.89/(1+19.5s) * T2
+  Serial.print(", ");
+  Serial.print(0.0456 * t2_op);
+  Serial.print(", ");
+  Serial.print(0.9 * t3[0]);
+  Serial.print(", ");
+  Serial.print(t3_estime_op);
   // Mettre à jour les variables
   t2[1] = t2[0];
   t2[0] = t2_op;
 
   t3[1] = t3[0];
   t3[0] = t3_estime_op;
-
+  Serial.print(", ");
+  Serial.println(t3_estime_op + temp_piece);
   return t3_estime_op + temp_piece;
 }
 
