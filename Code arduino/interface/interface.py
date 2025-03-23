@@ -106,17 +106,17 @@ class ArduinoInterface:
         self.canvas.get_tk_widget().grid(row=2, column=1, columnspan=3, rowspan=1, padx=10, pady=10, sticky=tk.NSEW)
 
         # Labels pour les températures
-        self.temp_actu_label = tk.Label(self.root, text="Température ACTU : ")
+        self.temp_actu_label = tk.Label(self.root, text="Actuateur (°C)")
         self.temp_actu_label.grid(row=3, column=1, padx=10, pady=(10,0), sticky=tk.S)
         self.temp_actu_entry = tk.Entry(self.root, textvariable=self.t_actu, state='readonly', justify="center")
         self.temp_actu_entry.grid(row=4, column=1, padx=10, pady=(0,10), sticky=tk.N)
 
-        self.temp_milieu_label = tk.Label(self.root, text="Température MILIEU : ")
+        self.temp_milieu_label = tk.Label(self.root, text="Milieu (°C)")
         self.temp_milieu_label.grid(row=3, column=2, padx=10, pady=(10,0), sticky=tk.S)
         self.temp_milieu_entry = tk.Entry(self.root, textvariable=self.t_milieu, state='readonly', justify="center")
         self.temp_milieu_entry.grid(row=4, column=2, padx=10, pady=(0,10), sticky=tk.N)
 
-        self.temp_laser_label = tk.Label(self.root, text="Température LASER : ")
+        self.temp_laser_label = tk.Label(self.root, text="Estimation laser (°C)")
         self.temp_laser_label.grid(row=3, column=3, padx=10, pady=(10,0), sticky=tk.S)
         self.temp_laser_entry = tk.Entry(self.root, textvariable=self.t_laser, state='readonly', justify="center")
         self.temp_laser_entry.grid(row=4, column=3, padx=10, pady=(0,10), sticky=tk.N)

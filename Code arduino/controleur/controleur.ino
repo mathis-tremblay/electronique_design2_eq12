@@ -32,13 +32,10 @@ const int umin = 140;
 const int umax = 840;
 
 // Variables pour calculer T3 estimé (calculs en assumant T=2)
-const double K = 0.89;
-const double tau = 19.5;
-const double b0 = K/(tau + 1);
-const double b1 = K/(tau + 1);
-const double a1 = -(tau-1)/(tau+1);
-double t2[2] = {0, 0}; // T2 mesuré
-double t3[2] = {0, 0}; // T3 estimé
+
+const double b = 0.0867;
+const double a = 0.9026;
+double t3k-1 = 0;
 
 bool mode_rep_echelon = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
 
@@ -99,6 +96,7 @@ void setup() {
            (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); // Prescaler 128 (16MHz / prescaler = 125kHz ADC)
   // Complète une conversion en 104us (13 cycle d'horloge / fréquence adc = 104us)
 
+  // Récolter la température de la pièce (pour point d'opération)
   delay(2000);
   double somme = 0;
   const int nbMesures = 10; 
@@ -107,12 +105,7 @@ void setup() {
     delay(10);
   }
   double bits_operation = somme / nbMesures;
-  double tension_operation = bits_a_tension(bits_operation);
-  Serial.print("Tension mesurée: ");
-  Serial.println(tension_operation);
-  temp_piece = tension_a_temp(tension_operation);
-  Serial.print("Température point d'opération: ");
-  Serial.println(temp_piece);
+  temp_piece = tension_a_temp(bits_a_tension(bits_operation);
 }
 
 
@@ -253,9 +246,7 @@ void loop() {
     Serial.print(",");
     Serial.println(est_stable);
     nouvelle_donnee = false;
-
   }
-  
 }
 
 // Calcule la sortie du PID
@@ -271,7 +262,7 @@ double PID_output(double cible, double mesure) {
   u[index] = erreur; 
 
   double output = Kp * erreur + Ki * erreur_integrale + Kd * derivee;
-  output = map(output, -104., 104., umin, umax); // output avant saturation... TODO: Changer borne depart
+  output = map(output*10, -1000, 1000, umin, umax); // output avant saturation... TODO: Changer borne depart (*10 pour avoir plus de precision, map aime pas floats)
   
   // Appliquer saturation et anti-windup
   if (output > umax) {
@@ -305,24 +296,8 @@ double tension_a_temp(double tension) {
 // Estime T3 a partir de T2 avec une fonction de transfert (discretisee et recurrente)
 double estimer_t3(double t2_mesure){
   double t2_op = t2_mesure - temp_piece; // Enlever le point d'operation
-  Serial.print(t2_mesure);
-  Serial.print(", ");
-  Serial.print(t2_op);
-  double t3_estime_op = 0.0867 * t2_op + 0.9026 * t3[0]; // T3 = 0.89/(1+19.5s) * T2
-  Serial.print(", ");
-  Serial.print(0.0456 * t2_op);
-  Serial.print(", ");
-  Serial.print(0.9 * t3[0]);
-  Serial.print(", ");
-  Serial.print(t3_estime_op);
-  // Mettre à jour les variables
-  t2[1] = t2[0];
-  t2[0] = t2_op;
-
-  t3[1] = t3[0];
-  t3[0] = t3_estime_op;
-  Serial.print(", ");
-  Serial.println(t3_estime_op + temp_piece);
+  double t3_estime_op = b * t2_op + a * t3k-1; // T3 = 0.89/(1+19.5s) * T2
+  t3k-1 = t3_estime_op;
   return t3_estime_op + temp_piece;
 }
 
