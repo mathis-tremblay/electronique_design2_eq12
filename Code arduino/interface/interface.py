@@ -41,6 +41,7 @@ class ArduinoInterface:
         self.t_laser_estime = tk.StringVar()
 
         self.temp_cible = tk.StringVar()
+        self.temp_piece = tk.StringVar()
 
         self.temps_data = []
         self.t_actu_data = []
@@ -54,7 +55,7 @@ class ArduinoInterface:
         self.ax.set_ylabel("Température (°C)")
         self.ax_commande.set_title("Commande")
         self.ax_commande.set_xlabel("Temps (s)")
-        self.ax_commande.set_ylabel("OCR1A (0-1000)")
+        self.ax_commande.set_ylabel("OCR1A")
 
         self.v_actu = tk.StringVar()
         self.v_milieu = tk.StringVar()
@@ -67,6 +68,8 @@ class ArduinoInterface:
         self.setup_serial()
 
         self.fichier, self.writer = creer_fichier()
+
+        self.pause = False
 
     # Éléments dans la page
     def create_widgets(self):
@@ -89,36 +92,48 @@ class ArduinoInterface:
         # Envoyer commandes manuellement
         self.command_label = tk.Label(self.root, text="Commande : ")
         self.command_label.grid(row=0, column=1, padx=10, pady=10, sticky=tk.E)
-        ToolTip(self.command_label, msg="Liste de commandes : \n- set_mode {0 pour manuel, 1 pour auto}\n- set_voltage {-1 à 1}\n- set_temp {20 à 30}\n- get_mode")
+        ToolTip(self.command_label, msg="Liste de commandes : \n- set_mode {0 pour manuel, 1 pour auto}\n- set_voltage {-1 à 1}\n- set_temp {20 à 30}\n- get_mode\n get_temp_cible\n get_temp_piece")
         self.command_entry = tk.Entry(self.root, width=30)
         self.command_entry.grid(row=0, column=2, padx=10, pady=10)
         self.command_entry.bind("<Return>", lambda event: self.send_command())
         self.send_button = tk.Button(self.root, text="Envoyer", command=self.send_command)
         self.send_button.grid(row=0, column=3, padx=10, pady=10, sticky=tk.W)
 
+        self.pause_bouton = tk.Button(self.root, text="\u23F8", command=self.toggle_pause)
+        self.pause_bouton.grid(row=0, column=3, padx=(40,10), pady=10)
+        ToolTip(self.pause_bouton, msg="Mettre en pause ou reprendre l'asservissement. Mettre sur pause envoie la dernière valeur de puissance déterminé par le régulateur dans le système.")
+
+        self.stop_bouton = tk.Button(self.root, text="Reset", command=self.stop)
+        self.stop_bouton.grid(row=0, column=3, padx=(120,10), pady=10)
+        ToolTip(self.stop_bouton, msg="Met la plaque à la température ambiante. Pour arrêter, choisir une autre température cible.")
 
         # Champ de texte pour afficher les données (lis le port série)
         self.output_text = scrolledtext.ScrolledText(self.root, width=60, height=8)
         self.output_text.grid(row=1, column=1, columnspan=3, padx=10, pady=10, sticky=tk.NSEW)
-
+        
         # Graphique
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.get_tk_widget().grid(row=2, column=1, columnspan=3, rowspan=1, padx=10, pady=10, sticky=tk.NSEW)
 
         # Labels pour les températures
+        self.temp_piece_label = tk.Label(self.root, text="Pièce (°C)")
+        self.temp_piece_label.grid(row=3, column=1, padx=10, pady=(10, 0), sticky=tk.S)
+        self.temp_piece_entry = tk.Entry(self.root, textvariable=self.temp_piece, state='readonly', justify="center")
+        self.temp_piece_entry.grid(row=4, column=1, padx=10, pady=(0, 10), sticky=tk.N)
+
         self.temp_actu_label = tk.Label(self.root, text="Actuateur (°C)")
-        self.temp_actu_label.grid(row=3, column=1, padx=10, pady=(10,0), sticky=tk.S)
+        self.temp_actu_label.grid(row=3, column=2, padx=10, pady=(10,0), sticky=tk.SW)
         self.temp_actu_entry = tk.Entry(self.root, textvariable=self.t_actu, state='readonly', justify="center")
-        self.temp_actu_entry.grid(row=4, column=1, padx=10, pady=(0,10), sticky=tk.N)
+        self.temp_actu_entry.grid(row=4, column=2, padx=10, pady=(0,10), sticky=tk.W)
 
         self.temp_milieu_label = tk.Label(self.root, text="Milieu (°C)")
-        self.temp_milieu_label.grid(row=3, column=2, padx=10, pady=(10,0), sticky=tk.S)
+        self.temp_milieu_label.grid(row=3, column=2, padx=10, pady=(10,0), sticky=tk.SE)
         self.temp_milieu_entry = tk.Entry(self.root, textvariable=self.t_milieu, state='readonly', justify="center")
-        self.temp_milieu_entry.grid(row=4, column=2, padx=10, pady=(0,10), sticky=tk.N)
+        self.temp_milieu_entry.grid(row=4, column=2, padx=10, pady=(0,10), sticky=tk.NE)
 
         self.temp_laser_label = tk.Label(self.root, text="Estimation laser (°C)")
         self.temp_laser_label.grid(row=3, column=3, padx=10, pady=(10,0), sticky=tk.S)
-        self.temp_laser_entry = tk.Entry(self.root, textvariable=self.t_laser, state='readonly', justify="center")
+        self.temp_laser_entry = tk.Entry(self.root, textvariable=self.t_laser_estime, state='readonly', justify="center")
         self.temp_laser_entry.grid(row=4, column=3, padx=10, pady=(0,10), sticky=tk.N)
 
         # Voyant de stabilité
@@ -178,16 +193,40 @@ class ArduinoInterface:
         if self.ser:
             rep = envoyer_commande("get_mode", self.ser)
             self.mode_var.set("Manuel" if rep == "1" else "Automatique")
+            self.pause = (rep == "1")
+            if self.pause:
+                self.pause_bouton.config(text="\u25B6")
+            else:
+                self.pause_bouton.config(text="\u23F8")
             rep = envoyer_commande("get_temp_cible", self.ser)
             self.temp_cible.set(rep)
+            if float(rep) < 20. or float(rep) > 30.:
+                self.output_text.insert(tk.END, f"Attention, la température cible {rep} n'est pas entre 20 et 30°C.\n")
+            rep = envoyer_commande("get_temp_piece", self.ser)
+            self.temp_piece.set(rep)
+            if float(rep) < 20. or float(rep) > 30.:
+                self.output_text.insert(tk.END, f"Attention, la température pièce {rep} n'est pas entre 20 et 30°C.\n")
+
+    def toggle_pause(self):
+        if self.pause:
+            self.set_mode("Automatique")
+            self.pause_bouton.config(text="\u23F8")
+        else:
+            self.set_mode("Manuel")
+            self.pause_bouton.config(text="\u25B6")
+        self.pause = not self.pause
+
+    def stop(self):
+        self.set_mode("Automatique")
+        self.set_temperature(temp_piece=True)
 
     # Envoyer une commande
     def send_command(self, command=""):
         if command == "":
             command = self.command_entry.get()
         if command and self.ser:
-            response = envoyer_commande(command, self.ser)
-            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {response}\n")
+            reponse = envoyer_commande(command, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {reponse}\n")
             self.output_text.see(tk.END)
             self.command_entry.delete(0, tk.END)
 
@@ -200,8 +239,8 @@ class ArduinoInterface:
         if self.ser:
             mode_value = "1" if mode == "Manuel" else "0"
             command = f"set_mode {mode_value}"
-            response = envoyer_commande(command, self.ser)
-            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {response}\n")
+            reponse = envoyer_commande(command, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {reponse}\n")
             self.output_text.see(tk.END)
             self.mode_var.set("Manuel" if mode == "Manuel" else "Automatique")
 
@@ -210,21 +249,23 @@ class ArduinoInterface:
         voltage = self.voltage_entry.get()
         if voltage and self.ser:
             command = f"set_voltage {voltage}"
-            response = envoyer_commande(command, self.ser)
-            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {response}\n")
+            reponse = envoyer_commande(command, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {reponse}\n")
             self.output_text.see(tk.END)
             self.voltage_entry.delete(0, tk.END)
 
     # Changer la température
-    def set_temperature(self):
+    def set_temperature(self, temp_piece=False):
         temperature = self.temp_entry.get()
+        if temp_piece:
+            temperature = self.temp_piece.get()
         if temperature and self.ser:
             command = f"set_temp {temperature}"
             reponse = envoyer_commande(command, self.ser)
             self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {reponse}\n")
             self.output_text.see(tk.END)
             self.temp_entry.delete(0, tk.END)
-            if reponse != "Aucune réponse, veuillez réessayer.":
+            if reponse != "Aucune réponse, veuillez réessayer." and reponse != "La température n'est pas entre 20°C et 30°C.":
                 self.temp_cible.set(temperature)
 
     # Mettre à jour le voyant de stabilité
@@ -290,7 +331,7 @@ class ArduinoInterface:
         self.ax_commande.plot(self.temps_data, self.commande_data, label="Commande", color='tab:orange')
         self.ax_commande.set_title("Commande")
         self.ax_commande.set_xlabel("Temps (s)")
-        self.ax_commande.set_ylabel("OCR1A (0-1000)")
+        self.ax_commande.set_ylabel("OCR1A")
         self.ax_commande.legend()
 
         self.canvas.draw()
@@ -301,14 +342,16 @@ class ArduinoInterface:
             self.ser.close()
         if not self.fichier.closed:
             self.fichier.close()
+        self.root.quit()
         self.root.destroy()
+
 
 if __name__ == "__main__":
     # Ouvrir fenetre pour selectionner le port
     root = tk.Tk()
     root.withdraw()
-    dialog = PortSelectionDialog(root)
-    port = dialog.result
+    #dialog = PortSelectionDialog(root)
+    port = "com9"#dialog.result
     if port:
         # Ouvre la fenêtre principale
         root.deiconify()

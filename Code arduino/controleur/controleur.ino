@@ -28,14 +28,14 @@ int index = 0;
 double erreur_integrale = 0;
 
 // Saturation
-const int umin = 140;
-const int umax = 840;
+const int umin = 260;
+const int umax = 1680;
 
 // Variables pour calculer T3 estimé (calculs en assumant T=2)
 
-const double b = 0.0867;
+const double b = 0.087;
 const double a = 0.9026;
-double t3k-1 = 0;
+double t3k_1 = 0;
 
 bool mode_rep_echelon = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
 
@@ -43,8 +43,6 @@ double temp_cible = 27.0;
 double temp_piece = 24.0; // Point d'operation, mesuré dans le setup
 
 // Stabilite
-bool stable = false;
-double tolerance = 0.8; // °C
 double t3_mesures[N] = {0}; // tableau circulaire mesures
 int indice = 0;
 
@@ -72,9 +70,9 @@ void setup() {
 
   // Pour avoir fréquence de 1kHz et 16 bits sur le pwm
   TCCR1A = (1 << COM1A1) | (1 << WGM11); // Mode Fast PWM avec TOP = ICR1
-  TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS10); // Mode 14, prescaler = 1
-  ICR1 = 1000;  // Définit la période pour obtenir 1kHz
-  OCR1A = 550; // entre 130 (ou 75 idéalement) et 850 (0V quand 490)
+  TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS11); // Prescaler = 8
+  ICR1 = 2000;  // Définit la période pour obtenir 1kHz
+  OCR1A = 970; // entre 280 et 1680 (0V quand 980)
 
   // Timer2 pour test sur arduino uno
   /*TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
@@ -97,7 +95,7 @@ void setup() {
   // Complète une conversion en 104us (13 cycle d'horloge / fréquence adc = 104us)
 
   // Récolter la température de la pièce (pour point d'opération)
-  delay(2000);
+  delay(1000);
   double somme = 0;
   const int nbMesures = 10; 
   for (int i = 0; i < nbMesures; i++) {
@@ -105,7 +103,7 @@ void setup() {
     delay(10);
   }
   double bits_operation = somme / nbMesures;
-  temp_piece = tension_a_temp(bits_a_tension(bits_operation);
+  temp_piece = tension_a_temp(bits_a_tension(bits_operation));
 }
 
 
@@ -146,6 +144,10 @@ void loop() {
 
     else if (commande == "get_temp_cible"){
       Serial.println("RESP:" + (String)temp_cible);
+    }
+
+    else if (commande == "get_temp_piece"){
+      Serial.println("RESP:" + (String)temp_piece);
     }
 
     else if (commande.startsWith("set_voltage ")) {
@@ -296,8 +298,8 @@ double tension_a_temp(double tension) {
 // Estime T3 a partir de T2 avec une fonction de transfert (discretisee et recurrente)
 double estimer_t3(double t2_mesure){
   double t2_op = t2_mesure - temp_piece; // Enlever le point d'operation
-  double t3_estime_op = b * t2_op + a * t3k-1; // T3 = 0.89/(1+19.5s) * T2
-  t3k-1 = t3_estime_op;
+  double t3_estime_op = b * t2_op + a * t3k_1; // T3 = 0.89/(1+19.5s) * T2
+  t3k_1 = t3_estime_op;
   return t3_estime_op + temp_piece;
 }
 
@@ -308,16 +310,17 @@ double estimer_t3(double t2_mesure){
 */
 int verif_stable(double t3){
   int stable = 1; // init a stable
-  t3_mesures[indice] = t3; 
+  double tolerance = max(abs(temp_cible-temp_piece)*0.05, 0.2); // 5%... équivaut à maximum 0.3°C
+  t3_mesures[indice] = t3 - temp_piece; 
   indice = (indice + 1) % N; // pour gerer liste
   // Verif si un element dans la liste n'est pas dans la tolerance. Si oui, instable (ou semi-stable)
   for (int i=0; i<N; i++){
-    if (abs(t3_mesures[i] - temp_cible) > tolerance){
+    if (abs(t3_mesures[i] - abs(temp_cible-temp_piece)) > tolerance){
       stable = 0; //instable
     }
   }
   // Si derniere mesure stable, mais pas 10 dernieres, alors semi-stable
-  if (abs(t3 - temp_cible) < tolerance && stable == 0){
+  if (abs(t3 - temp_piece - temp_cible) < tolerance && stable == 0){
     stable = 2; // Semi-stable
   }
   return stable;
