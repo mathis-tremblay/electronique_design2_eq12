@@ -64,116 +64,191 @@ class ArduinoInterface:
 
         self.stable = tk.IntVar()
 
-        self.create_widgets()
-        self.setup_serial()
-
         self.fichier, self.writer = creer_fichier()
+
+        self.a_zero = tk.StringVar()
+        self.a_un = tk.StringVar()
+        self.a_deux = tk.StringVar()
+        self.b_zero = tk.StringVar()
+        self.b_un = tk.StringVar()
 
         self.pause = False
 
+        self.create_widgets()
+        self.setup_serial()
+
     # Éléments dans la page
     def create_widgets(self):
-        # Grid
-        self.root.columnconfigure(0, weight=1)
-        self.root.columnconfigure(1, weight=1)
-        self.root.columnconfigure(2, weight=3)
-        self.root.columnconfigure(3, weight=1)
-        self.root.columnconfigure(4, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        self.root.rowconfigure(1, weight=1)
-        self.root.rowconfigure(2, weight=4)
-        self.root.rowconfigure(3, weight=1)
-        self.root.rowconfigure(4, weight=1)
-        self.root.rowconfigure(5, weight=1)
-        self.root.rowconfigure(6, weight=1)
-        self.root.rowconfigure(7, weight=1)
-        self.root.rowconfigure(8, weight=1)
+        # Création des frames principales
+        self.left_frame = tk.Frame(self.root)
+        self.left_frame.grid(row=0, column=0, rowspan=8, sticky="nsew", padx=10, pady=10)
 
-        # Envoyer commandes manuellement
-        self.command_label = tk.Label(self.root, text="Commande : ")
-        self.command_label.grid(row=0, column=1, padx=10, pady=10, sticky=tk.E)
-        ToolTip(self.command_label, msg="Liste de commandes : \n- set_mode {0 pour manuel, 1 pour auto}\n- set_voltage {-1 à 1}\n- set_temp {20 à 30}\n- get_mode\n get_temp_cible\n get_temp_piece")
-        self.command_entry = tk.Entry(self.root, width=30)
-        self.command_entry.grid(row=0, column=2, padx=10, pady=10)
+        self.right_frame = tk.Frame(self.root)
+        self.right_frame.grid(row=0, column=1, rowspan=8, sticky="nsew", padx=10, pady=10)
+
+        # Ajustement de la pondération pour une bonne répartition
+        self.root.columnconfigure(0, weight=1)  # Tout sauf les graphiques
+        self.root.columnconfigure(1, weight=3)  # Graphiques
+        self.root.rowconfigure(2, weight=4)  # Plus de place aux graphiques
+
+        # ---- COMMANDES ----
+        self.command_label = tk.Label(self.left_frame, text="Commande : ")
+        self.command_label.grid(row=0, column=0)
+        ToolTip(self.command_label,
+                msg="Liste de commandes : \n- set_mode {0 pour manuel, 1 pour auto}\n- set_voltage {-1 à 1}\n- set_temp {20 à 30}\n- get_mode\n get_temp_cible\n get_temp_piece")
+
+        self.command_entry = tk.Entry(self.left_frame, width=30)
+        self.command_entry.grid(row=0, column=1, padx=10)
         self.command_entry.bind("<Return>", lambda event: self.send_command())
-        self.send_button = tk.Button(self.root, text="Envoyer", command=self.send_command)
-        self.send_button.grid(row=0, column=3, padx=10, pady=10, sticky=tk.W)
 
-        self.pause_bouton = tk.Button(self.root, text="\u23F8", command=self.toggle_pause)
-        self.pause_bouton.grid(row=0, column=3, padx=(40,10), pady=10)
-        ToolTip(self.pause_bouton, msg="Mettre en pause ou reprendre l'asservissement. Mettre sur pause envoie la dernière valeur de puissance déterminé par le régulateur dans le système.")
+        self.send_button = tk.Button(self.left_frame, text="Envoyer", command=self.send_command)
+        self.send_button.grid(row=0, column=2, padx=5)
 
-        self.stop_bouton = tk.Button(self.root, text="Reset", command=self.stop)
-        self.stop_bouton.grid(row=0, column=3, padx=(120,10), pady=10)
-        ToolTip(self.stop_bouton, msg="Met la plaque à la température ambiante. Pour arrêter, choisir une autre température cible.")
+        self.pause_bouton = tk.Button(self.left_frame, text="\u23F8", command=self.toggle_pause)
+        self.pause_bouton.grid(row=0, column=3, padx=(0,50))
+        ToolTip(self.pause_bouton, msg="Mettre en pause ou reprendre l'asservissement.")
 
-        # Champ de texte pour afficher les données (lis le port série)
-        self.output_text = scrolledtext.ScrolledText(self.root, width=60, height=8)
-        self.output_text.grid(row=1, column=1, columnspan=3, padx=10, pady=10, sticky=tk.NSEW)
-        
-        # Graphique
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
-        self.canvas.get_tk_widget().grid(row=2, column=1, columnspan=3, rowspan=1, padx=10, pady=10, sticky=tk.NSEW)
+        self.stop_bouton = tk.Button(self.left_frame, text="Reset", command=self.stop)
+        self.stop_bouton.grid(row=0, column=3, padx=(50,0))
+        ToolTip(self.stop_bouton, msg="Met la plaque à la température ambiante.")
 
-        # Labels pour les températures
-        self.temp_piece_label = tk.Label(self.root, text="Pièce (°C)")
-        self.temp_piece_label.grid(row=3, column=1, padx=10, pady=(10, 0), sticky=tk.S)
-        self.temp_piece_entry = tk.Entry(self.root, textvariable=self.temp_piece, state='readonly', justify="center")
-        self.temp_piece_entry.grid(row=4, column=1, padx=10, pady=(0, 10), sticky=tk.N)
+        # ---- TEXTE SCROLLABLE (Affichage des données) ----
+        self.output_text = scrolledtext.ScrolledText(self.left_frame, width=80, height=8)
+        self.output_text.grid(row=1, column=0, columnspan=4, pady=10, padx=10)
 
-        self.temp_actu_label = tk.Label(self.root, text="Actuateur (°C)")
-        self.temp_actu_label.grid(row=3, column=2, padx=10, pady=(10,0), sticky=tk.SW)
-        self.temp_actu_entry = tk.Entry(self.root, textvariable=self.t_actu, state='readonly', justify="center")
-        self.temp_actu_entry.grid(row=4, column=2, padx=10, pady=(0,10), sticky=tk.W)
+        # ---- CHAMPS DE TEMPÉRATURES ----
+        self.temp_piece_label = tk.Label(self.left_frame, text="Pièce (°C)")
+        self.temp_piece_label.grid(row=2, column=0, pady=5,  sticky="e")
+        self.temp_piece_entry = tk.Entry(self.left_frame, textvariable=self.temp_piece, state='readonly',
+                                         justify="center")
+        self.temp_piece_entry.grid(row=2, column=1, pady=5)
 
-        self.temp_milieu_label = tk.Label(self.root, text="Milieu (°C)")
-        self.temp_milieu_label.grid(row=3, column=2, padx=10, pady=(10,0), sticky=tk.SE)
-        self.temp_milieu_entry = tk.Entry(self.root, textvariable=self.t_milieu, state='readonly', justify="center")
-        self.temp_milieu_entry.grid(row=4, column=2, padx=10, pady=(0,10), sticky=tk.NE)
+        self.temp_actu_label = tk.Label(self.left_frame, text="Actuateur (°C)")
+        self.temp_actu_label.grid(row=2, column=2, pady=5, sticky="e")
+        self.temp_actu_entry = tk.Entry(self.left_frame, textvariable=self.t_actu, state='readonly', justify="center")
+        self.temp_actu_entry.grid(row=2, column=3, pady=5)
 
-        self.temp_laser_label = tk.Label(self.root, text="Estimation laser (°C)")
-        self.temp_laser_label.grid(row=3, column=3, padx=10, pady=(10,0), sticky=tk.S)
-        self.temp_laser_entry = tk.Entry(self.root, textvariable=self.t_laser_estime, state='readonly', justify="center")
-        self.temp_laser_entry.grid(row=4, column=3, padx=10, pady=(0,10), sticky=tk.N)
+        self.temp_milieu_label = tk.Label(self.left_frame, text="Milieu (°C)")
+        self.temp_milieu_label.grid(row=3, column=0, pady=5, sticky="e")
+        self.temp_milieu_entry = tk.Entry(self.left_frame, textvariable=self.t_milieu, state='readonly',
+                                          justify="center")
+        self.temp_milieu_entry.grid(row=3, column=1)
 
-        # Voyant de stabilité
-        self.stabilite_label = tk.Label(self.root, text="Non stable à partir de 0s")
-        self.stabilite_label.grid(row=5, column=3, padx=10, pady=0, sticky=tk.N)
-        self.red_light_canvas = tk.Canvas(self.root, width=20, height=20, highlightthickness=0)
-        self.red_light_canvas.grid(row=5, column=3, padx=10, pady=(10,0))
+        self.temp_laser_label = tk.Label(self.left_frame, text="Estimation laser (°C)")
+        self.temp_laser_label.grid(row=3, column=2, pady=5, sticky="e")
+        self.temp_laser_entry = tk.Entry(self.left_frame, textvariable=self.t_laser_estime, state='readonly',
+                                         justify="center")
+        self.temp_laser_entry.grid(row=3, column=3, pady=10)
+
+        # ---- VOYANT DE STABILITÉ ----
+        self.stabilite_label = tk.Label(self.left_frame, text="Non stable à partir de 0s")
+        self.stabilite_label.grid(row=4, column=1, pady=10)
+        self.red_light_canvas = tk.Canvas(self.left_frame, width=20, height=20, highlightthickness=0)
+        self.red_light_canvas.grid(row=4, column=0, pady=10, sticky="e")
         ToolTip(self.red_light_canvas, msg="Vert : stable\nJaune : semi-stable\nRouge : non stable")
         self.red_light = self.red_light_canvas.create_oval(2, 2, 18, 18, fill="red")
 
-        # Modes automatique ou manuel
-        self.mode_label = tk.Label(self.root, text="Mode : ")
-        self.mode_label.grid(row=5, column=1, padx=10, pady=10, sticky=tk.E)
-        self.mode_var = tk.StringVar(self.root)
+        # ---- MODE (Automatique / Manuel) ----
+        self.mode_label = tk.Label(self.left_frame, text="Mode : ")
+        self.mode_label.grid(row=5, column=0, pady=10, sticky="e")
+        self.mode_var = tk.StringVar(self.left_frame)
         self.mode_var.set("Manuel")
-        self.mode_button = tk.Button(self.root, textvariable=self.mode_var, command=self.show_mode_menu)
-        self.mode_button.grid(row=5, column=2, padx=10, pady=10)
-        self.mode_menu = tk.Menu(self.root, tearoff=0)
+        self.mode_button = tk.Button(self.left_frame, textvariable=self.mode_var, command=self.show_mode_menu)
+        self.mode_button.grid(row=5, column=1, pady=10)
+        self.mode_menu = tk.Menu(self.left_frame, tearoff=0)
         self.mode_menu.add_command(label="Manuel", command=lambda: self.set_mode("Manuel"))
         self.mode_menu.add_command(label="Automatique", command=lambda: self.set_mode("Automatique"))
 
-        # Choisir manuellement tension appliquée (entre -1 et 1), doit etre en mode manuel
-        self.voltage_label = tk.Label(self.root, text="Voltage : ")
-        self.voltage_label.grid(row=6, column=1, padx=10, pady=10, sticky=tk.E)
-        self.voltage_entry = tk.Entry(self.root, width=10)
-        self.voltage_entry.grid(row=6, column=2, padx=10, pady=10)
+        # ---- CHOIX DU VOLTAGE ----
+        self.voltage_label = tk.Label(self.left_frame, text="Voltage : ")
+        self.voltage_label.grid(row=6, column=0, pady=10, sticky="e")
+        self.voltage_entry = tk.Entry(self.left_frame)
+        self.voltage_entry.grid(row=6, column=1, pady=10)
         self.voltage_entry.bind("<Return>", lambda event: self.set_voltage())
-        self.set_voltage_button = tk.Button(self.root, text="Fixer la tension", command=self.set_voltage)
-        self.set_voltage_button.grid(row=6, column=3, padx=10, pady=10)
+        self.set_voltage_button = tk.Button(self.left_frame, text="Fixer la tension", command=self.set_voltage)
+        self.set_voltage_button.grid(row=6, column=3, pady=10)
 
-        # Choisir manuellement la température (entre 20 et 30), doit etre en mode automatique
-        self.temp_label = tk.Label(self.root, text="Température : ")
-        self.temp_label.grid(row=7, column=1, padx=10, pady=10, sticky=tk.E)
-        self.temp_entry = tk.Entry(self.root, width=10)
-        self.temp_entry.grid(row=7, column=2, padx=(10,100), pady=10)
+        # ---- CHOIX DE LA TEMPÉRATURE ----
+        self.temp_label = tk.Label(self.left_frame, text="Température : ")
+        self.temp_label.grid(row=7, column=0, pady=10, sticky="e")
+        self.temp_entry = tk.Entry(self.left_frame)
+        self.temp_entry.grid(row=7, column=1, pady=10)
         self.temp_entry.bind("<Return>", lambda event: self.set_temperature())
-        self.temp_cible_mtn = tk.Entry(self.root, width=10, textvariable=self.temp_cible, state='readonly', justify="center")
-        self.temp_cible_mtn.grid(row=7, column=2, padx=(100,10), pady=10)
-        self.set_temp_button = tk.Button(self.root, text="Fixer la température", command=self.set_temperature)
-        self.set_temp_button.grid(row=7, column=3, padx=10, pady=10)
+        self.temp_cible_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.temp_cible, state='readonly',
+                                       justify="center")
+        self.temp_cible_mtn.grid(row=7, column=2, pady=10)
+        self.set_temp_button = tk.Button(self.left_frame, text="Fixer la température", command=self.set_temperature)
+        self.set_temp_button.grid(row=7, column=3, pady=10)
+
+        # ---- CHOIX DU PIDF ----
+        self.pidf_info = tk.Label(self.left_frame, text="PIDF de la forme : commande = a0*erreur + a1*erreur(k-1) + a2*erreur(k-2) + b0*commande(k-1) + b1*commande(k-2)")
+        self.pidf_info.grid(row=8, column=0, columnspan=4, pady=(10,5))
+
+        self.a_zero_label = tk.Label(self.left_frame, text="a0 : ")
+        self.a_zero_label.grid(row=9, column=0, pady=5, sticky="e")
+        self.a_zero_entry = tk.Entry(self.left_frame)
+        self.a_zero_entry.grid(row=9, column=1, pady=5)
+        self.a_zero_entry.bind("<Return>", lambda event: self.set_pidf(a_zero=True))
+        self.a_zero_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.a_zero, state='readonly',
+                                       justify="center")
+        self.a_zero_mtn.grid(row=9, column=2, pady=5)
+        self.set_a_zero_button = tk.Button(self.left_frame, text="Fixer a0", command=lambda: self.set_pidf(a_zero=True))
+        self.set_a_zero_button.grid(row=9, column=3, pady=5)
+
+        self.a_un_label = tk.Label(self.left_frame, text="a1 : ")
+        self.a_un_label.grid(row=10, column=0, pady=5, sticky="e")
+        self.a_un_entry = tk.Entry(self.left_frame)
+        self.a_un_entry.grid(row=10, column=1, pady=5)
+        self.a_un_entry.bind("<Return>", lambda event: self.set_pidf(a_un=True))
+        self.a_un_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.a_un, state='readonly',
+                               justify="center")
+        self.a_un_mtn.grid(row=10, column=2, pady=5)
+        self.set_a_un_button = tk.Button(self.left_frame, text="Fixer a1", command=lambda: self.set_pidf(a_un=True))
+        self.set_a_un_button.grid(row=10, column=3, pady=5)
+
+        self.a_deux_label = tk.Label(self.left_frame, text="a2 : ")
+        self.a_deux_label.grid(row=11, column=0, pady=5, sticky="e")
+        self.a_deux_entry = tk.Entry(self.left_frame)
+        self.a_deux_entry.grid(row=11, column=1, pady=5)
+        self.a_deux_entry.bind("<Return>", lambda event: self.set_pidf(a_deux=True))
+        self.a_deux_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.a_deux, state='readonly',
+                               justify="center")
+        self.a_deux_mtn.grid(row=11, column=2, pady=5)
+        self.set_a_deux_button = tk.Button(self.left_frame, text="Fixer a2", command=lambda: self.set_pidf(a_deux=True))
+        self.set_a_deux_button.grid(row=11, column=3, pady=5)
+
+        self.b_zero_label = tk.Label(self.left_frame, text="b0 : ")
+        self.b_zero_label.grid(row=12, column=0, pady=5, sticky="e")
+        self.b_zero_entry = tk.Entry(self.left_frame)
+        self.b_zero_entry.grid(row=12, column=1, pady=5)
+        self.b_zero_entry.bind("<Return>", lambda event: self.set_pidf(b_zero=True))
+        self.b_zero_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.b_zero, state='readonly',
+                               justify="center")
+        self.b_zero_mtn.grid(row=12, column=2, pady=5)
+        self.set_b_zero_button = tk.Button(self.left_frame, text="Fixer b0", command=lambda: self.set_pidf(b_zero=True))
+        self.set_b_zero_button.grid(row=12, column=3, pady=5)
+
+        self.b_un_label = tk.Label(self.left_frame, text="b1 : ")
+        self.b_un_label.grid(row=13, column=0, pady=5, sticky="e")
+        self.b_un_entry = tk.Entry(self.left_frame)
+        self.b_un_entry.grid(row=13, column=1, pady=5)
+        self.b_un_entry.bind("<Return>", lambda event: self.set_pidf(b_un=True))
+        self.b_un_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.b_un, state='readonly',
+                               justify="center")
+        self.b_un_mtn.grid(row=13, column=2, pady=5)
+        self.set_b_un_button = tk.Button(self.left_frame, text="Fixer b1", command=lambda: self.set_pidf(b_un=True))
+        self.set_b_un_button.grid(row=13, column=3, pady=5)
+
+        # ---- GRAPHIQUE (Seul à droite) ----
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.right_frame)
+        self.canvas.get_tk_widget().grid(row=0, column=0, rowspan=8, sticky="nsew")
+
+        # Ajustement de la disposition des frames
+        self.left_frame.columnconfigure(0, weight=1)
+        self.left_frame.columnconfigure(1, weight=2)
+        self.left_frame.columnconfigure(2, weight=1)
+        self.right_frame.columnconfigure(0, weight=1)  # Graphique bien centré
+        self.right_frame.rowconfigure(0, weight=1)  # Remplir l’espace verticalement
 
     # Setup communication serie avec arduino
     def setup_serial(self):
@@ -206,6 +281,14 @@ class ArduinoInterface:
             self.temp_piece.set(rep)
             if float(rep) < 20. or float(rep) > 30.:
                 self.output_text.insert(tk.END, f"Attention, la température pièce {rep} n'est pas entre 20 et 30°C.\n")
+            rep = envoyer_commande("get_pidf", self.ser)
+            a_zero, a_un, a_deux, b_zero, b_un = rep.split(",")
+            self.a_zero.set(a_zero)
+            self.a_un.set(a_un)
+            self.a_deux.set(a_deux)
+            self.b_zero.set(b_zero)
+            self.b_un.set(b_un)
+
 
     def toggle_pause(self):
         if self.pause:
@@ -267,6 +350,34 @@ class ArduinoInterface:
             self.temp_entry.delete(0, tk.END)
             if reponse != "Aucune réponse, veuillez réessayer." and reponse != "La température n'est pas entre 20°C et 30°C.":
                 self.temp_cible.set(temperature)
+
+    def set_pidf(self, a_zero=False, a_un=False, a_deux=False, b_zero=False, b_un=False):
+        if self.ser:
+            a_zero_val = self.a_zero_entry.get() if a_zero else self.a_zero.get()
+            a_un_val = self.a_un_entry.get() if a_un else self.a_un.get()
+            a_deux_val = self.a_deux_entry.get() if a_deux else self.a_deux.get()
+            b_zero_val = self.b_zero_entry.get() if b_zero else self.b_zero.get()
+            b_un_val = self.b_un_entry.get() if b_un else self.b_un.get()
+            commande = f"set_pidf {a_zero_val},{a_un_val},{a_deux_val},{b_zero_val},{b_un_val}"
+            reponse = envoyer_commande(commande, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé : {commande}\nRéponse : {reponse}\n")
+            self.output_text.see(tk.END)
+            self.a_zero_entry.delete(0, tk.END)
+            self.a_un_entry.delete(0, tk.END)
+            self.a_deux_entry.delete(0, tk.END)
+            self.b_zero_entry.delete(0, tk.END)
+            self.b_un_entry.delete(0, tk.END)
+            if reponse != "Aucune réponse, veuillez réessayer.":
+                if a_zero:
+                    self.a_zero.set(a_zero_val)
+                elif a_un:
+                    self.a_un.set(a_un_val)
+                elif a_deux:
+                    self.a_deux.set(a_deux_val)
+                elif b_zero:
+                    self.b_zero.set(b_zero_val)
+                elif b_un:
+                    self.b_un.set(b_un_val)
 
     # Mettre à jour le voyant de stabilité
     def set_stable(self, stable, temps):
