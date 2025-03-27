@@ -66,10 +66,10 @@ class ArduinoInterface:
 
         self.fichier, self.writer = creer_fichier()
 
-        self.a_zero = tk.StringVar()
-        self.a_un = tk.StringVar()
-        self.a_deux = tk.StringVar()
-        self.b_zero = tk.StringVar()
+        self.kp = tk.StringVar()
+        self.ti = tk.StringVar()
+        self.td = tk.StringVar()
+        self.tf = tk.StringVar()
         self.b_un = tk.StringVar()
 
         self.pause = False
@@ -169,7 +169,7 @@ class ArduinoInterface:
         self.set_voltage_button.grid(row=6, column=3, pady=10)
 
         # ---- CHOIX DE LA TEMPÉRATURE ----
-        self.temp_label = tk.Label(self.left_frame, text="Température : ")
+        self.temp_label = tk.Label(self.left_frame, text="Température cible: ")
         self.temp_label.grid(row=7, column=0, pady=10, sticky="e")
         self.temp_entry = tk.Entry(self.left_frame)
         self.temp_entry.grid(row=7, column=1, pady=10)
@@ -180,64 +180,62 @@ class ArduinoInterface:
         self.set_temp_button = tk.Button(self.left_frame, text="Fixer la température", command=self.set_temperature)
         self.set_temp_button.grid(row=7, column=3, pady=10)
 
+
         # ---- CHOIX DU PIDF ----
-        self.pidf_info = tk.Label(self.left_frame, text="PIDF de la forme : commande = a0*erreur + a1*erreur(k-1) + a2*erreur(k-2) + b0*commande(k-1) + b1*commande(k-2)")
+        self.pidf_info = tk.Label(self.left_frame, text="PIDF de la forme parallèle : u(t)=Kp*e(t)+Ti∫e(t)dt+Td*(Tf/(1+Tf))*de(t)/dt")
         self.pidf_info.grid(row=8, column=0, columnspan=4, pady=(10,5))
 
-        self.a_zero_label = tk.Label(self.left_frame, text="a0 : ")
-        self.a_zero_label.grid(row=9, column=0, pady=5, sticky="e")
-        self.a_zero_entry = tk.Entry(self.left_frame)
-        self.a_zero_entry.grid(row=9, column=1, pady=5)
-        self.a_zero_entry.bind("<Return>", lambda event: self.set_pidf(a_zero=True))
-        self.a_zero_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.a_zero, state='readonly',
+        self.kp_label = tk.Label(self.left_frame, text="Kp : ")
+        self.kp_label.grid(row=9, column=0, pady=5, sticky="e")
+        self.kp_entry = tk.Entry(self.left_frame)
+        self.kp_entry.grid(row=9, column=1, pady=5)
+        self.kp_entry.bind("<Return>", lambda event: self.set_pidf(kp=True))
+        self.kp_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.kp, state='readonly',
                                        justify="center")
-        self.a_zero_mtn.grid(row=9, column=2, pady=5)
-        self.set_a_zero_button = tk.Button(self.left_frame, text="Fixer a0", command=lambda: self.set_pidf(a_zero=True))
-        self.set_a_zero_button.grid(row=9, column=3, pady=5)
+        self.kp_mtn.grid(row=9, column=2, pady=5)
+        self.set_kp_button = tk.Button(self.left_frame, text="Fixer Kp", command=lambda: self.set_pidf(kp=True))
+        self.set_kp_button.grid(row=9, column=3, pady=5)
 
-        self.a_un_label = tk.Label(self.left_frame, text="a1 : ")
-        self.a_un_label.grid(row=10, column=0, pady=5, sticky="e")
-        self.a_un_entry = tk.Entry(self.left_frame)
-        self.a_un_entry.grid(row=10, column=1, pady=5)
-        self.a_un_entry.bind("<Return>", lambda event: self.set_pidf(a_un=True))
-        self.a_un_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.a_un, state='readonly',
+        self.ti_label = tk.Label(self.left_frame, text="Ti : ")
+        self.ti_label.grid(row=10, column=0, pady=5, sticky="e")
+        self.ti_entry = tk.Entry(self.left_frame)
+        self.ti_entry.grid(row=10, column=1, pady=5)
+        self.ti_entry.bind("<Return>", lambda event: self.set_pidf(ti=True))
+        self.ti_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.ti, state='readonly',
                                justify="center")
-        self.a_un_mtn.grid(row=10, column=2, pady=5)
-        self.set_a_un_button = tk.Button(self.left_frame, text="Fixer a1", command=lambda: self.set_pidf(a_un=True))
-        self.set_a_un_button.grid(row=10, column=3, pady=5)
+        self.ti_mtn.grid(row=10, column=2, pady=5)
+        self.set_ti_button = tk.Button(self.left_frame, text="Fixer Ti", command=lambda: self.set_pidf(ti=True))
+        self.set_ti_button.grid(row=10, column=3, pady=5)
 
-        self.a_deux_label = tk.Label(self.left_frame, text="a2 : ")
-        self.a_deux_label.grid(row=11, column=0, pady=5, sticky="e")
-        self.a_deux_entry = tk.Entry(self.left_frame)
-        self.a_deux_entry.grid(row=11, column=1, pady=5)
-        self.a_deux_entry.bind("<Return>", lambda event: self.set_pidf(a_deux=True))
-        self.a_deux_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.a_deux, state='readonly',
+        self.td_label = tk.Label(self.left_frame, text="Td : ")
+        self.td_label.grid(row=11, column=0, pady=5, sticky="e")
+        self.td_entry = tk.Entry(self.left_frame)
+        self.td_entry.grid(row=11, column=1, pady=5)
+        self.td_entry.bind("<Return>", lambda event: self.set_pidf(td=True))
+        self.td_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.td, state='readonly',
                                justify="center")
-        self.a_deux_mtn.grid(row=11, column=2, pady=5)
-        self.set_a_deux_button = tk.Button(self.left_frame, text="Fixer a2", command=lambda: self.set_pidf(a_deux=True))
-        self.set_a_deux_button.grid(row=11, column=3, pady=5)
+        self.td_mtn.grid(row=11, column=2, pady=5)
+        self.set_td_button = tk.Button(self.left_frame, text="Fixer Td", command=lambda: self.set_pidf(td=True))
+        self.set_td_button.grid(row=11, column=3, pady=5)
 
-        self.b_zero_label = tk.Label(self.left_frame, text="b0 : ")
-        self.b_zero_label.grid(row=12, column=0, pady=5, sticky="e")
-        self.b_zero_entry = tk.Entry(self.left_frame)
-        self.b_zero_entry.grid(row=12, column=1, pady=5)
-        self.b_zero_entry.bind("<Return>", lambda event: self.set_pidf(b_zero=True))
-        self.b_zero_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.b_zero, state='readonly',
+        self.tf_label = tk.Label(self.left_frame, text="Tf : ")
+        self.tf_label.grid(row=12, column=0, pady=5, sticky="e")
+        self.tf_entry = tk.Entry(self.left_frame)
+        self.tf_entry.grid(row=12, column=1, pady=5)
+        self.tf_entry.bind("<Return>", lambda event: self.set_pidf(tf=True))
+        self.tf_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.tf, state='readonly',
                                justify="center")
-        self.b_zero_mtn.grid(row=12, column=2, pady=5)
-        self.set_b_zero_button = tk.Button(self.left_frame, text="Fixer b0", command=lambda: self.set_pidf(b_zero=True))
-        self.set_b_zero_button.grid(row=12, column=3, pady=5)
+        self.tf_mtn.grid(row=12, column=2, pady=5)
+        self.set_tf_button = tk.Button(self.left_frame, text="Fixer Tf", command=lambda: self.set_pidf(tf=True))
+        self.set_tf_button.grid(row=12, column=3, pady=5)
 
-        self.b_un_label = tk.Label(self.left_frame, text="b1 : ")
-        self.b_un_label.grid(row=13, column=0, pady=5, sticky="e")
-        self.b_un_entry = tk.Entry(self.left_frame)
-        self.b_un_entry.grid(row=13, column=1, pady=5)
-        self.b_un_entry.bind("<Return>", lambda event: self.set_pidf(b_un=True))
-        self.b_un_mtn = tk.Entry(self.left_frame, width=10, textvariable=self.b_un, state='readonly',
-                               justify="center")
-        self.b_un_mtn.grid(row=13, column=2, pady=5)
-        self.set_b_un_button = tk.Button(self.left_frame, text="Fixer b1", command=lambda: self.set_pidf(b_un=True))
-        self.set_b_un_button.grid(row=13, column=3, pady=5)
+        self.temp_piece_label = tk.Label(self.left_frame, text="Température pièce: ")
+        self.temp_piece_label.grid(row=13, column=0, pady=10, sticky="e")
+        self.temp_piece_entry = tk.Entry(self.left_frame)
+        self.temp_piece_entry.grid(row=13, column=1, pady=10)
+        self.temp_piece_entry.bind("<Return>", lambda event: self.set_temp_piece())
+        self.set_temp_button = tk.Button(self.left_frame, text="Fixer la température", command=self.set_temp_piece)
+        self.set_temp_button.grid(row=13, column=3, pady=10)
 
         # ---- GRAPHIQUE (Seul à droite) ----
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.right_frame)
@@ -282,12 +280,11 @@ class ArduinoInterface:
             if float(rep) < 20. or float(rep) > 30.:
                 self.output_text.insert(tk.END, f"Attention, la température pièce {rep} n'est pas entre 20 et 30°C.\n")
             rep = envoyer_commande("get_pidf", self.ser)
-            a_zero, a_un, a_deux, b_zero, b_un = rep.split(",")
-            self.a_zero.set(a_zero)
-            self.a_un.set(a_un)
-            self.a_deux.set(a_deux)
-            self.b_zero.set(b_zero)
-            self.b_un.set(b_un)
+            kp, ti, td, tf = rep.split(",")
+            self.kp.set(kp)
+            self.ti.set(ti)
+            self.td.set(td)
+            self.tf.set(tf)
 
 
     def toggle_pause(self):
@@ -351,33 +348,41 @@ class ArduinoInterface:
             if reponse != "Aucune réponse, veuillez réessayer." and reponse != "La température n'est pas entre 20°C et 30°C.":
                 self.temp_cible.set(temperature)
 
-    def set_pidf(self, a_zero=False, a_un=False, a_deux=False, b_zero=False, b_un=False):
+    # Changer la température piece
+    def set_temp_piece(self):
+        temperature = self.temp_piece_entry.get()
+        if temperature and self.ser:
+            command = f"set_temp_piece {temperature}"
+            reponse = envoyer_commande(command, self.ser)
+            self.output_text.insert(tk.END, f"Envoyé : {command}\nRéponse : {reponse}\n")
+            self.output_text.see(tk.END)
+            self.temp_piece_entry.delete(0, tk.END)
+            if reponse != "Aucune réponse, veuillez réessayer." and reponse != "La température n'est pas entre 20°C et 30°C.":
+                self.temp_piece.set(temperature)
+
+    def set_pidf(self, kp=False, ti=False, td=False, tf=False):
         if self.ser:
-            a_zero_val = self.a_zero_entry.get() if a_zero else self.a_zero.get()
-            a_un_val = self.a_un_entry.get() if a_un else self.a_un.get()
-            a_deux_val = self.a_deux_entry.get() if a_deux else self.a_deux.get()
-            b_zero_val = self.b_zero_entry.get() if b_zero else self.b_zero.get()
-            b_un_val = self.b_un_entry.get() if b_un else self.b_un.get()
-            commande = f"set_pidf {a_zero_val},{a_un_val},{a_deux_val},{b_zero_val},{b_un_val}"
+            kp_val = self.kp_entry.get() if kp else self.kp.get()
+            ti_val = self.ti_entry.get() if ti else self.ti.get()
+            td_val = self.td_entry.get() if td else self.td.get()
+            tf_val = self.tf_entry.get() if tf else self.tf.get()
+            commande = f"set_pidf {kp_val},{ti_val},{td_val},{tf_val}"
             reponse = envoyer_commande(commande, self.ser)
             self.output_text.insert(tk.END, f"Envoyé : {commande}\nRéponse : {reponse}\n")
             self.output_text.see(tk.END)
-            self.a_zero_entry.delete(0, tk.END)
-            self.a_un_entry.delete(0, tk.END)
-            self.a_deux_entry.delete(0, tk.END)
-            self.b_zero_entry.delete(0, tk.END)
-            self.b_un_entry.delete(0, tk.END)
+            self.kp_entry.delete(0, tk.END)
+            self.ti_entry.delete(0, tk.END)
+            self.td_entry.delete(0, tk.END)
+            self.tf_entry.delete(0, tk.END)
             if reponse != "Aucune réponse, veuillez réessayer.":
-                if a_zero:
-                    self.a_zero.set(a_zero_val)
-                elif a_un:
-                    self.a_un.set(a_un_val)
-                elif a_deux:
-                    self.a_deux.set(a_deux_val)
-                elif b_zero:
-                    self.b_zero.set(b_zero_val)
-                elif b_un:
-                    self.b_un.set(b_un_val)
+                if kp:
+                    self.kp.set(kp_val)
+                elif ti:
+                    self.ti.set(ti_val)
+                elif td:
+                    self.td.set(td_val)
+                elif tf:
+                    self.tf.set(tf_val)
 
     # Mettre à jour le voyant de stabilité
     def set_stable(self, stable, temps):

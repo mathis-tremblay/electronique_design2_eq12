@@ -16,27 +16,31 @@ const int r_diviseur = 10000;
 const double freq = 1.5; // Freq échantillonnage = freq/3
 
 // Constantes et variables pour PIDF;
-double a0 = 62.23;
-double a1 = -120.3;
-double a2 = 58.12;
-double b0 = 1.77;
-double b1 = -0.77;
-/*const double Kp = 0.00062;
-const double Ki = 0.11735;
-const double Kd = 0;*/
+double a0 = 367.68750;
+double a1 = -710.27591;
+double a2 = 343.01658;
+double b0 = 0.60350;
+double b1 = 0.39650;
+
 // Memoire donnees pour PIDF
 double e[2] = {0}; // files entrees
 double u[2] = {0}; // files sortie
-//int index = 0;
-//double erreur_integrale = 0;
+int index = 0;
+double err_integrale = 0;
+double err_prev = 0;
+double derivee_filtree_prev = 0;
+
+double Kp = 17.6;
+double Ti = 0.153;
+double Td = 501.16;
+double Tf = 2.314;
 
 // Saturation
 const int umin = 290;
 const int umax = 1650;
 
 // Variables pour calculer T3 estimé (calculs en assumant T=2)
-
-const double b = 0.087;
+const double b = 0.085;
 const double a = 0.9026;
 double t3k_1 = 0;
 
@@ -46,6 +50,7 @@ double temp_cible = 27.0;
 double temp_piece = 24.0; // Point d'operation, mesuré dans le setup
 
 // Stabilite
+const double tolerance = 0.1;
 const int N = 10;
 double t3_mesures[N] = {0}; // tableau circulaire mesures
 int indice = 0;
@@ -155,7 +160,7 @@ void loop() {
     }
 
     else if (commande == "get_pidf"){
-      Serial.println("RESP:" + (String)a0 + "," + (String)a1 + "," + (String)a2 + "," + (String)b0 + ","+ (String)b1);
+      Serial.println("RESP:" + (String)Kp + "," + (String)Ti + "," + (String)Td + "," + (String)Tf);
     }
 
     else if (commande.startsWith("set_voltage ")) {
@@ -204,6 +209,18 @@ void loop() {
       }
     }
 
+    else if (commande.startsWith("set_temp_piece ")){
+      double temp = commande.substring(14).toFloat();
+      if (temp > 30. || temp < 20.) {
+        Serial.println("RESP:La température n'est pas entre 20°C et 30°C.");
+      }
+      else {
+        temp_piece = temp;
+        Serial.print("RESP:Température pièce en entré: ");
+        Serial.println(temp);
+      }
+    }
+
     else if (commande.startsWith("set_pidf ")){
       String pidf = commande.substring(8);
     
@@ -212,31 +229,28 @@ void loop() {
       
       char* token = strtok(pidf_array, ",");
       
-      float vals[5] = {0};
+      float vals[4] = {0};
 
       int i = 0;
-      while (token != NULL && i < 5) {
+      while (token != NULL && i < 4) {
           vals[i] = atof(token);
           token = strtok(NULL, ","); 
           i++;
       }
       
-      if (i == 5) {
-          a0 = vals[0];
-          a1 = vals[1];
-          a2 = vals[2];
-          b0 = vals[3];
-          b1 = vals[4];
-          Serial.print("RESP:Voici les nouvelles valeurs: a0=");
-          Serial.print(a0, 3);
-          Serial.print(", a1=");
-          Serial.print(a1, 3);
-          Serial.print(", a2=");
-          Serial.print(a2, 3);
-          Serial.print(", b0=");
-          Serial.print(b0, 3);
-          Serial.print(", b1=");
-          Serial.println(b1, 3);
+      if (i == 4) {
+          Kp = vals[0];
+          Ti = vals[1];
+          Td = vals[2];
+          Tf = vals[3];
+          Serial.print("RESP:Voici les nouvelles valeurs: Kp=");
+          Serial.print(Kp, 3);
+          Serial.print(", Ti=");
+          Serial.print(Ti, 3);
+          Serial.print(", Td=");
+          Serial.print(Tf, 3);
+          Serial.print(", Tf=");
+          Serial.println(Tf, 3);
       } else {
           Serial.println("RESP:Erreur.");
       }
@@ -301,39 +315,47 @@ void loop() {
 double PID_output(double cible, double mesure) {
   // u = anciennes sorties
   // e : anciennes erreurs
-  double err = (cible - mesure);
+  /*double err = (cible - mesure);
   double sortie = a0*err + a1*e[0] + a2*e[1] + b0*u[0] + b1*u[1];
-  /*double erreur = cible - mesure;
-
-  // Mise à jour de l'erreur integrale
-  erreur_integrale += erreur; // Accumulation pour le terme intégral
-
-  // Calcul PID
-  double derivee = erreur - u[index];
-  index = (index + 1) % N; // maj index
-  u[index] = erreur; 
-
-  double output = Kp * erreur + Ki * erreur_integrale + Kd * derivee;
-  output = map(output*10, -1000, 1000, umin, umax); // output avant saturation... TODO: Changer borne depart (*10 pour avoir plus de precision, map aime pas floats)
-  */
-
-  /*sortie = map(sortie, -2500, 2500, umin, umax);
-
-  double sortie_saturee = constrain(sortie, umin, umax);
-
-  // Anti-windup : compenser l'erreur accumulée si saturation
-  if (sortie_saturee != sortie) {
-    err -= (sortie - sortie_saturee) * 0.1; // Facteur 0.1 à ajuster selon besoin
-  }*/
-
+  Serial.println();
+  Serial.println(sortie);
   // Mise à jour des erreurs et sorties
   e[1] = e[0];
-  e[0] = err;  // Corrigé par anti-windup
+  e[0] = err;
   
   u[1] = u[0];
   u[0] = sortie;
-  sortie = map(sortie, -100, 100, umin, umax);
-  return constrain(sortie, umin, umax);
+  sortie = constrain(map(sortie, -100, 100, umin, umax), umin, umax);
+  if (sortie == umin || sortie == umax) {
+    e[0] = 0; // Anti-windup
+    u[0] = u[1];
+  }
+  return sortie;*/
+
+  double err = cible - mesure;
+
+  // Mise à jour de l'erreur integrale
+  err_integrale += err; // Accumulation pour le terme intégral
+
+  // Calcul PID
+  double derivee = err - err_prev;
+  double derivee_filtree = (Tf * derivee + derivee_filtree_prev) / (1 + Tf);
+  err_prev = err; 
+
+  double output = Kp * err + Ti * err_integrale + Td * derivee_filtree;
+  output = map(output*10, -900, 900, umin, umax);
+  
+  // Appliquer saturation et anti-windup
+  if (output > umax) {
+    output = umax;
+    err_integrale -= err; // Anti-windup
+  } 
+  else if (output < umin) {
+    output = umin;
+    err_integrale -= err; // Anti-windup
+  }
+
+  return constrain(output, umin, umax);
 }
 
 // Calcul la tension a partir du resultat de 0 a 1023
@@ -367,7 +389,6 @@ double estimer_t3(double t2_mesure){
 */
 int verif_stable(double t3){
   int stable = 1; // init a stable
-  double tolerance = max(abs(temp_cible-temp_piece)*0.05, 0.2); // 5%... équivaut à maximum 0.3°C
   t3_mesures[indice] = t3; 
   indice = (indice + 1) % N; // pour gerer liste
   // Verif si un element dans la liste n'est pas dans la tolerance. Si oui, instable (ou semi-stable)
