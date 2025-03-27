@@ -1,5 +1,3 @@
-
-
 // Constantes pour les pins
 const int T_ACTU = A0;
 const int T_MILIEU = A1;
@@ -30,14 +28,14 @@ double err_integrale = 0;
 double err_prev = 0;
 double derivee_filtree_prev = 0;
 
-double Kp = 17.6;
-double Ti = 0.153;
-double Td = 501.16;
-double Tf = 2.314;
+double Kp = 23.5;
+double Ti = 0.16;
+double Td = 664.34;
+double Tf = 0.7336;
 
 // Saturation
 const int umin = 290;
-const int umax = 1650;
+const int umax = 1670;
 
 // Variables pour calculer T3 estimé (calculs en assumant T=2)
 const double b = 0.085;
@@ -46,12 +44,12 @@ double t3k_1 = 0;
 
 bool mode_rep_echelon = true;  // Pour setter si on veut sauvegarder des réponses à l'échelon ou asservir la temperature (si false)
 
-double temp_cible = 27.0;
+double temp_cible = 24.0;
 double temp_piece = 24.0; // Point d'operation, mesuré dans le setup
 
 // Stabilite
 const double tolerance = 0.1;
-const int N = 10;
+const int N = 15;
 double t3_mesures[N] = {0}; // tableau circulaire mesures
 int indice = 0;
 
@@ -81,7 +79,7 @@ void setup() {
   TCCR1A = (1 << COM1A1) | (1 << WGM11); // Mode Fast PWM avec TOP = ICR1
   TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS11); // Prescaler = 8
   ICR1 = 2000;  // Définit la période pour obtenir 1kHz
-  OCR1A = 970; // entre 280 et 1680 (0V quand 980)
+  OCR1A = 980; // entre 280 et 1680 (0V quand 980)
 
   // Timer2 pour test sur arduino uno
   /*TCCR2A = (1 << WGM21);   // Mode CTC pour faire interruptions
@@ -160,7 +158,7 @@ void loop() {
     }
 
     else if (commande == "get_pidf"){
-      Serial.println("RESP:" + (String)Kp + "," + (String)Ti + "," + (String)Td + "," + (String)Tf);
+      Serial.println("RESP:" + String(Kp,3) + "," + String(Ti,3) + "," + String(Td,3) + "," + String(Tf,3));
     }
 
     else if (commande.startsWith("set_voltage ")) {
@@ -343,7 +341,8 @@ double PID_output(double cible, double mesure) {
   err_prev = err; 
 
   double output = Kp * err + Ti * err_integrale + Td * derivee_filtree;
-  output = map(output*10, -900, 900, umin, umax);
+  output = map(output*10, -1000, 1000, 0, 2000) - 20;
+
   
   // Appliquer saturation et anti-windup
   if (output > umax) {
@@ -377,7 +376,7 @@ double tension_a_temp(double tension) {
 // Estime T3 a partir de T2 avec une fonction de transfert (discretisee et recurrente)
 double estimer_t3(double t2_mesure){
   double t2_op = t2_mesure - temp_piece; // Enlever le point d'operation
-  double t3_estime_op = b * t2_op + a * t3k_1; // T3 = 0.89/(1+19.5s) * T2
+  double t3_estime_op = b * t2_op + a * t3k_1; // T3 = 0.86/(1+19.5s) * T2
   t3k_1 = t3_estime_op;
   return t3_estime_op + temp_piece;
 }
@@ -387,20 +386,28 @@ double estimer_t3(double t2_mesure){
  * Semi-stable (2) si derniere mesure est stable mais pas toutes les 10 dernieres (pour pas avoir delai de 20 secondes)
  * Instable (0) si un element de la liste pas dans tolerance et derniere mesure non plus
 */
-int verif_stable(double t3){
-  int stable = 1; // init a stable
+int verif_stable(double t3) {
   t3_mesures[indice] = t3; 
-  indice = (indice + 1) % N; // pour gerer liste
-  // Verif si un element dans la liste n'est pas dans la tolerance. Si oui, instable (ou semi-stable)
-  for (int i=0; i<N; i++){
-    if (abs(t3_mesures[i] - temp_cible) > tolerance){
-      stable = 0; //instable
-    }
+  indice = (indice + 1) % N; // Pour gérer la liste circulaire
+  
+  // Calcul de la moyenne
+  double somme = 0;
+  for (int i = 0; i < N; i++) {
+    somme += t3_mesures[i];
   }
-  // Si derniere mesure stable, mais pas 10 dernieres, alors semi-stable
-  if (abs(t3 - temp_cible) < tolerance && stable == 0){
-    stable = 2; // Semi-stable
+  double moyenne = somme / N;
+
+  // Calcul de la déviation standard
+  double somme_carre = 0;
+  for (int i = 0; i < N; i++) {
+    somme_carre += pow(t3_mesures[i] - moyenne, 2);
   }
-  return stable;
+  double ecart_type = sqrt(somme_carre / N);
+
+  // Vérification de la stabilité
+  if (ecart_type < tolerance) {
+    return 1; // Stable
+  }
+  return 0; // Instable
 }
 
