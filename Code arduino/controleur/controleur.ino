@@ -28,7 +28,7 @@ double err_integrale = 0;
 double err_prev = 0;
 double derivee_filtree_prev = 0;
 
-double Kp = 23.5;
+double Kp = 24.5;
 double Ti = 0.16;
 double Td = 664.34;
 double Tf = 0.7336;
@@ -49,7 +49,7 @@ double temp_piece = 24.0; // Point d'operation, mesuré dans le setup
 
 // Stabilite
 const double tolerance = 0.1;
-const int N = 15;
+const int N = 30;
 double t3_mesures[N] = {0}; // tableau circulaire mesures
 int indice = 0;
 
@@ -405,7 +405,7 @@ int verif_stable(double t3) {
   double ecart_type = sqrt(somme_carre / N);
 
   // Vérification de la stabilité
-  if (ecart_type < tolerance) {
+  if (ecart_type < tolerance && abs(t3 - temp_cible) < 0.6) {
     return 1; // Stable
   }
   return 0; // Instable

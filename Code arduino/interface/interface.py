@@ -417,7 +417,8 @@ class ArduinoInterface:
                     self.ocr1a.set(str(ocr1a))
                     self.set_stable(stable, temps)
 
-                    self.writer.writerow([temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, ocr1a, stable])
+                    #self.writer.writerow([temps, t_actu, t_milieu, t_laser, t_laser_estime, v_actu, v_milieu, v_laser, ocr1a, stable])
+                    self.writer.writerow([temps, ocr1a, t_actu, t_milieu, t_laser, t_laser_estime, stable])
 
                     self.temps_data.append(temps)
                     self.t_actu_data.append(t_actu)
