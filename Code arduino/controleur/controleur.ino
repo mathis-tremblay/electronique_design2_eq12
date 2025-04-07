@@ -28,7 +28,7 @@ double err_integrale = 0;
 double err_prev = 0;
 double derivee_filtree_prev = 0;
 
-double Kp = 24.5;
+double Kp = 25.0;
 double Ti = 0.16;
 double Td = 664.34;
 double Tf = 0.7336;
