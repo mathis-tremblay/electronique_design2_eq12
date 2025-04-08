@@ -14,11 +14,17 @@ const int r_diviseur = 10000;
 const double freq = 1.5; // Freq échantillonnage = freq/3
 
 // Constantes et variables pour PIDF;
-double a0 = 367.68750;
+/*double a0 = 367.68750;
 double a1 = -710.27591;
 double a2 = 343.01658;
 double b0 = 0.60350;
 double b1 = 0.39650;
+*/
+
+double Kp = 25.0;
+double Ti = 0.16;
+double Td = 664.34;
+double Tf = 0.7336;
 
 // Memoire donnees pour PIDF
 double e[2] = {0}; // files entrees
@@ -27,11 +33,6 @@ int index = 0;
 double err_integrale = 0;
 double err_prev = 0;
 double derivee_filtree_prev = 0;
-
-double Kp = 25.0;
-double Ti = 0.16;
-double Td = 664.34;
-double Tf = 0.7336;
 
 // Saturation
 const int umin = 290;
@@ -361,7 +362,7 @@ double PID_output(double cible, double mesure) {
 double bits_a_tension(double donne_brute){
   // Transfert en tension et enlever gain et soustraction ampli
   double ref = analogRead(A7);
-  ref = ref*5./1023. + 0.04; // Tension drop de 0.02V lors de l'échantillonnage sur arduino
+  ref = ref*5./1023. + 0.04; // Tension drop de 0.04V lors de l'échantillonnage sur arduino
   double tension = donne_brute * 5 / 1023.0 * 24000/100000 + ref; // Avec soustracteur
   return tension;
 }
