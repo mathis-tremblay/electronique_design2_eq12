@@ -467,8 +467,8 @@ if __name__ == "__main__":
     # Ouvrir fenetre pour selectionner le port
     root = tk.Tk()
     root.withdraw()
-    #dialog = PortSelectionDialog(root)
-    port = "com9"#dialog.result
+    dialog = PortSelectionDialog(root)
+    port = dialog.result
     if port:
         # Ouvre la fenêtre principale
         root.deiconify()

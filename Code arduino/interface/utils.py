@@ -45,9 +45,9 @@ def creer_fichier():
     # Nom fichier csv pas utilisé
     OUTPUT_FILE = "data"
     i = 0
-    while (os.path.exists("./" + OUTPUT_FILE + str(i) + ".csv")):
+    while (os.path.exists("./Données/" + OUTPUT_FILE + str(i) + ".csv")):
         i += 1
-    OUTPUT_FILE = OUTPUT_FILE + str(i) + ".csv"
+    OUTPUT_FILE = "Données/" + OUTPUT_FILE + str(i) + ".csv"
 
     # Création du fichier CSV et écriture de l'en-tête
     fichier = open(OUTPUT_FILE, "w", newline='')
